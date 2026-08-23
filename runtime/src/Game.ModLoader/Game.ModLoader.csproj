@@ -1,0 +1,16 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\Game.Mod.Contract\Game.Mod.Contract.csproj" />
+    <ProjectReference Include="..\Game.ECS\Game.ECS.csproj" />
+    <ProjectReference Include="..\Game.Messaging\Game.Messaging.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFrameworks>netstandard2.1;net8.0</TargetFrameworks>
+    <LangVersion>9.0</LangVersion>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+</Project>

@@ -4,29 +4,22 @@ obj/
 *.user
 .vs/
 
-# --- Unity (runtime/Unity) ---
-[Ll]ibrary/
-[Tt]emp/
-[Oo]bj/
-[Bb]uild/
-[Bb]uilds/
-[Ll]ogs/
-[Uu]ser[Ss]ettings/
-*.csproj
-*.sln
-*.unityproj
-*.pidb
-*.booproj
-*.svd
-*.pdb
-*.mdb
-*.opendb
-*.VC.db
+# --- Unity 工程（仅 runtime/Unity/ 内） ---
+runtime/Unity/[Ll]ibrary/
+runtime/Unity/[Tt]emp/
+runtime/Unity/[Oo]bj/
+runtime/Unity/[Bb]uild/
+runtime/Unity/[Bb]uilds/
+runtime/Unity/[Ll]ogs/
+runtime/Unity/[Uu]ser[Ss]ettings/
+runtime/Unity/*.csproj
+runtime/Unity/*.sln
 
 # --- built mod packages ---
 mods/**/*.mod
 mods/**/bin/
 mods/**/obj/
+.tmp_modbuild/
 
 # --- OS ---
 .DS_Store
