@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Game.Messaging;
 
 namespace Game.ECS
 {
@@ -16,15 +17,17 @@ namespace Game.ECS
         void Update(SystemContext context);
     }
 
-    /// <summary>系统执行上下文，提供世界访问与查询。</summary>
+    /// <summary>系统执行上下文，提供世界访问、消息总线与查询。</summary>
     public sealed class SystemContext
     {
         public World World { get; }
+        public MessageBus Messages { get; }
         public float DeltaTime { get; }
 
-        public SystemContext(World world, float deltaTime)
+        public SystemContext(World world, MessageBus messages, float deltaTime)
         {
             World = world;
+            Messages = messages;
             DeltaTime = deltaTime;
         }
 
@@ -59,6 +62,12 @@ namespace Game.ECS
     public sealed class SystemGroup
     {
         private readonly List<(ISystem System, SystemSide Side)> _systems = new();
+        private readonly MessageBus _messages;
+
+        public SystemGroup(MessageBus messages)
+        {
+            _messages = messages;
+        }
 
         public void Add(ISystem system, SystemSide side) => _systems.Add((system, side));
 
@@ -66,7 +75,7 @@ namespace Game.ECS
 
         public void Update(World world, float deltaTime, SystemSide side)
         {
-            var ctx = new SystemContext(world, deltaTime);
+            var ctx = new SystemContext(world, _messages, deltaTime);
             foreach (var (system, s) in _systems)
             {
                 if (s == SystemSide.Shared || s == side)
@@ -77,7 +86,7 @@ namespace Game.ECS
         /// <summary>单进程（Host 模式）tick：所有系统各执行一次。</summary>
         public void UpdateAll(World world, float deltaTime)
         {
-            var ctx = new SystemContext(world, deltaTime);
+            var ctx = new SystemContext(world, _messages, deltaTime);
             foreach (var (system, _) in _systems)
                 system.Update(ctx);
         }

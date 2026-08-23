@@ -45,6 +45,10 @@ namespace Game.ECS
             return store;
         }
 
+        /// <summary>按类型获取组件存储（非泛型，供反射/工具层使用）。</summary>
+        public IComponentStore? TryGetStore(Type componentType)
+            => _stores.TryGetValue(componentType, out var s) ? s : null;
+
         public void Add<T>(Entity entity, in T component) where T : struct, IComponent
         {
             EnsureExists(entity);

@@ -59,6 +59,20 @@ namespace Game.Messaging
             catch (Exception e) { OnError?.Invoke(e); }
         }
 
+        /// <summary>非泛型定向消息（供反射/工具层在运行时按类型发送）。</summary>
+        public void SendTo(ModId target, object message)
+        {
+            if (message is null) return;
+            var type = message.GetType();
+            if (!_handlers.TryGetValue(target, out var map) || !map.TryGetValue(type, out var handler))
+            {
+                Log?.Invoke($"[MessageBus] 目标 Mod '{target}' 未处理消息 {type.Name}，已丢弃");
+                return;
+            }
+            try { handler(message); }
+            catch (Exception e) { OnError?.Invoke(e); }
+        }
+
         /// <summary>请求应答。目标缺失/应答类型不符 → 抛 MessageException。</summary>
         public TReply Request<T, TReply>(ModId target, T message) where T : notnull
         {

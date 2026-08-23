@@ -7,6 +7,8 @@ namespace Game.ECS
     {
         void RemoveEntity(uint id);
         int Count { get; }
+        bool TryGetRaw(uint entity, out object component);
+        IEnumerable<(uint Entity, object Component)> RawAll();
     }
 
     /// <summary>
@@ -25,6 +27,23 @@ namespace Game.ECS
         public bool Contains(uint entity) => _data.ContainsKey(entity);
 
         public IEnumerable<(uint Entity, T Component)> All()
+        {
+            foreach (var kv in _data)
+                yield return (kv.Key, kv.Value);
+        }
+
+        public bool TryGetRaw(uint entity, out object component)
+        {
+            if (_data.TryGetValue(entity, out var c))
+            {
+                component = c;
+                return true;
+            }
+            component = null!;
+            return false;
+        }
+
+        public IEnumerable<(uint Entity, object Component)> RawAll()
         {
             foreach (var kv in _data)
                 yield return (kv.Key, kv.Value);
