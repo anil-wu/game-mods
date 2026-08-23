@@ -1,0 +1,8 @@
+{
+  "modId": "com.sample.hello",
+  "version": "0.1.0",
+  "entryDll": "com.sample.hello.dll",
+  "dependencies": {
+    "com.game.core": ">=1.0.0"
+  }
+}

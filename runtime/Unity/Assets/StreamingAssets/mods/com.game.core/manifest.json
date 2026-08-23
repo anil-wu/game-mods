@@ -1,0 +1,5 @@
+{
+  "modId": "com.game.core",
+  "version": "1.0.0",
+  "entryDll": "com.game.core.dll"
+}

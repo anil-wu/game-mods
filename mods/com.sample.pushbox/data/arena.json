@@ -1,0 +1,7 @@
+{
+  "arenaHalf": 10,
+  "winDistance": 7,
+  "pushForce": 8,
+  "damping": 1.5,
+  "maxSpeed": 5
+}

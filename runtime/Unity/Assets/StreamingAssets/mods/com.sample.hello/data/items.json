@@ -1,0 +1,4 @@
+[
+  { "id": "com.sample.hello:sword", "name": "Sword", "damage": 10 },
+  { "id": "com.sample.hello:shield", "name": "Shield", "defense": 8 }
+]
