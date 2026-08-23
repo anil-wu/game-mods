@@ -74,6 +74,8 @@
 └─────────────────────────────────────────────────────┘
 ```
 
+**Runtime 组成**：`runtime` 只包含 **基础层（Framework）+ 核心 Mod（`com.game.core`）**，随游戏一起分发。具体游戏（如推箱子）是第三方 Mod，在 `mods/` 创作空间实现，运行时通过通用机制加载，不感知任何具体游戏。
+
 ## 1.2 设计原则
 
 1. **吃自己的狗粮（Dogfooding）**：Core Mod 与第三方 Mod 走完全相同的构建、分发、加载管线。框架自身通过自身暴露的 API 实现游戏内容，强制架构解耦。
@@ -96,6 +98,42 @@
 │ Mirror + 服务端权威 → Host / Dedicated / Relay 三模式               │
 └───────────────────────────────────────────────────────────────────┘
 ```
+
+## 1.4 三层边界：Framework / 核心 Mod / 游戏 Mod
+
+**最高原则**：
+
+1. **Framework 与核心 Mod 稳定**，不轻易改变。
+2. **默认：一切实现都在游戏 Mod 自身**。
+3. **例外：仅当游戏 Mod 无法实现时**，才下沉到核心 Mod 或 Framework。
+
+### 判断口诀
+
+- **默认 → 游戏 Mod**：能在 Mod 内实现的自包含实现。
+- **“游戏 Mod 无法实现”才升级**：
+  - 需要**引擎级能力**（热更新、域重载、网络协议、安全沙箱、资源隔离）→ Framework
+  - 需要**跨 Mod 契约**（多个 Mod 必须共享同一类型才能互操作，单个 Mod 无法单方面建立）→ 核心 Mod
+
+### 三层定位
+
+| 层 | 定位 | 归属内容 | 稳定性 |
+|---|---|---|---|
+| **Framework** | 游戏无关的引擎 | 只有 Mod 无法实现的引擎能力（Mod 生命周期 / ECS / 消息 / 契约 / 网络 / 安全隔离） | 最稳定，极少变 |
+| **核心 Mod**（官方核心 Mod 集合） | 游戏的地基 | 只放跨玩法 Mod 必须共享的契约，不放“方便复用”的工具；可拆分为多个 | 稳定，慎变 |
+| **游戏 Mod**（mods/） | 默认实现地 | 一切能在 Mod 内实现的自包含实现 | 最自由，常变 |
+
+**反例警示**：生命值、伤害、阵营、单位、波次等——若单个 Mod 就能自包含实现，则**留在游戏 Mod**，不要急于下沉到核心 Mod。只有当第二个 Mod 必须与之互操作时，才升级为核心 Mod 契约。
+
+### 核心 Mod 示例
+
+- `com.game.core` —— 游戏基础（承载跨玩法共享的基础组件 / 系统 / 内容）
+- `com.game.protocol` —— 协议服务（二进制桥，分**服务端部分** / **客户端部分**，共享 ProtocolCore）：注册协议解析器（编解码器）、上行（消息 → 序列化 → 二进制 → 服务端）、下行（二进制 → 解析 → 分发给对应 Mod）
+
+### 需求拆分与可行性分析
+
+1. **默认在游戏 Mod 实现**。
+2. 只有确认“游戏 Mod 无法实现”（引擎能力 / 跨 Mod 契约），才升级。
+3. 评估每层现状与改动成本：Framework（最高，需版本兼容）> 核心 Mod（中）> 游戏 Mod（最低）。
 
 ---
 
@@ -388,8 +426,10 @@ A 写 "com.other.mod:assets/hero.png"
 
 核心原则：**源工程结构 1:1 映射到包结构**，构建工具看到目录就知道怎么打包。
 
+**命名约定：源工程根目录以 modId 命名**（与 `mod.json` 的 `modId` 字段一致，如 `com.mycompany.mymod`）。
+
 ```
-mymod/                          # 源工程根目录
+com.mycompany.mymod/            # 源工程根目录 = modId
 ├── mod.json                    # 源清单 (modId + version + entryDll)
 ├── src/                        # C# 源码 → 编译成 entryDll
 │   ├── ModEntry.cs             # IMod 实现
@@ -425,6 +465,8 @@ mymod/                          # 源工程根目录
 | B. Unity batchmode 编译 | mod 是 Unity 子工程 | 构建重、绑定 Unity 版本 |
 
 选 A：Mod 生态的健康度取决于构建门槛，作者不该为编译一个 Mod 去装完整引擎。reference assemblies 只是编译期桩，运行时由游戏注入真实实现。
+
+**补充**：当 Mod 自带 MonoBehaviour 视图（表现层）时，编译需额外引用 UnityEngine 程序集（`CoreModule` / `IMGUIModule` / `InputLegacyModule` 等模块 DLL，取自 Unity 安装目录 `Editor/Data/Managed/UnityEngine/`）。纯逻辑 Mod 无需引用。
 
 ## 7.4 modbuild CLI
 
@@ -528,6 +570,10 @@ Phase 4 启动: 触发 OnEnable → 进入游戏循环
 Loaded → Registered → Enabled → Active
               (可运行时降级/禁用, 用于调试与故障隔离)
 ```
+
+### Mod 视图（自带表现层）
+
+Mod 可自带 MonoBehaviour 视图（表现层），与入口同属一个 Mod 程序集，通过入口暴露的静态桥访问框架服务（World / Systems / Messages）。加载完成后，运行时**通用地**扫描 Mod 程序集并实例化其中的 MonoBehaviour——运行时无需感知任何具体 Mod。游戏循环由 Mod 视图驱动：输入 → 系统 tick → 读取状态 → 渲染。
 
 ## 9.2 ECS 世界（逻辑组织核心）
 
@@ -964,6 +1010,38 @@ void OnServerBatch(NetworkConnectionToClient conn, ModMsgBatch batch)
 可靠 batch:   上限按 transport (KCP 可靠消息上限, 约百KB级)
 单条 payload: 硬上限 8KB (可配)
 ```
+
+### 10.5.6 协议核心 Mod（com.game.protocol）—— 二进制桥
+
+协议复用层作为**核心 Mod** 落地（而非 Framework），因为它属于「跨玩法 Mod 共享的契约」。纯传输层，无游戏逻辑：
+
+```
+                协议 Mod（com.game.protocol）—— 纯传输层，无游戏逻辑
+   ┌─────────────────────────────────────────────────────────────────────┐
+   │     ProtocolClient（客户端部分）           ProtocolServer（服务端部分）   │
+   │     ┌────────────────────────────┐      ┌────────────────────────────┐│
+   │     │ 客户端解析器注册表           │      │ 服务端解析器注册表           ││
+   │     │ msgId → (owner, codec)    │      │ msgId → (owner, codec)    ││
+   │     └────────────────────────────┘      └────────────────────────────┘│
+   └─────────────────────────────────────────────────────────────────────┘
+
+① 上行（客户端 Mod → 服务端 Mod）：
+   客户端Mod ──消息──► Client ──序列化──► [msgId|payload] ──SendToServer──► 网络
+   服务端Mod ◄──分发── Server ◄──解析(服务端注册表) ◄──Receive ◄────────────┘
+
+② 下行（服务端 Mod → 客户端 Mod，单发 / 广播）：
+   服务端Mod ──消息──► Server ──序列化──► [msgId|payload] ──SendToAll/One──► 网络
+   客户端Mod ◄──分发── Client ◄──解析(客户端注册表) ◄──Receive ◄────────────┘
+```
+
+| # | 职责 | API |
+|---|---|---|
+| ① | 接受游戏 Mod 客户端消息 → 序列化 → 二进制 → 服务端 | `Client.Send` + `SendToServer` |
+| ② | 接受客户端二进制 → 按服务端注册表找解析器 → 解析 → 分发对应服务端 Mod | `Server.Receive` |
+| ③ | 接受游戏 Mod 服务端消息 → 序列化 → 二进制 → 客户端（单发/广播） | `Server.Send` + `SendToAll`/`SendToOne` |
+| ④ | 接受服务端二进制 → 按客户端注册表找解析器 → 解析 → 分发对应客户端 Mod | `Client.Receive` |
+
+**要点**：客户端与服务端各自维护独立解析器注册表；`SendToServer` / `SendToAll` / `SendToOne` 是网络钩子（待 Mirror 接入注入）；协议 Mod 只做二进制 ↔ 消息的传输与路由，不含任何游戏逻辑。
 
 ## 10.6 握手流程
 

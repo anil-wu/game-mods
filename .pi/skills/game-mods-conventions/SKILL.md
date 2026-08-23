@@ -51,14 +51,17 @@ type：`feat` / `fix` / `build` / `chore` / `ci` / `docs` / `style` / `refactor`
 ## 目录结构
 
 - `design/` —— 设计文档（权威，`mod-architecture.md`）
-- `runtime/` —— Unity 工程（`Unity/`）+ 核心库（`src/`，多目标）
+- `runtime/` —— 运行时：**基础层（框架）+ 核心 Mod（`com.game.core`）**，不含任何游戏特定代码
 - `relay_server/` —— 中转服务（UDP 哑转发 + 控制面）
 - `mod_server/` —— Mod 注册与下载服务
-- `mods/` —— Mod 创作示例
+- `mods/` —— Mod 创作空间（第三方游戏 Mod，根目录以 modId 命名，如 `com.sample.pushbox`）
 
 ## 领域约定
 
 - **Mod 包** = `manifest.json`（modId / version / entryDll / files）+ 文件清单（path / type / size / sha256）
 - **modId** 反向域名（`com.xx.xx`），是内容/消息/资源的命名空间根
 - **Mod 间通信** = 消息（广播 / 定向 / 请求应答）；**逻辑** = ECS（状态在组件，逻辑在系统）
+- **runtime 分层** = 基础层（框架）+ 核心 Mod（`com.game.core` 游戏基础、`com.game.protocol` 协议服务）；游戏 Mod 一律放 `mods/` 创作空间
+- **实现默认在 Mod** = Framework/核心 Mod 稳定不轻易改；一切实现默认在游戏 Mod 自身，仅当“游戏 Mod 无法实现”（引擎能力 / 跨 Mod 契约）才升级
+- **Mod 自带视图** = Mod 可自带 MonoBehaviour 表现层，运行时通用实例化，不感知具体游戏
 - 详细设计见 `design/mod-architecture.md`

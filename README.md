@@ -64,20 +64,22 @@ feature/* ──(PR 合并)──► develop ──(发布合并)──► maste
 
 ```
 ├── design/              设计文档
-├── runtime/             Mod 运行时工程（Unity 2022.3.62f3 项目 + 框架核心库）
+├── runtime/             Mod 运行时（基础层框架 + 核心 Mod，Unity 2022.3.62f3）
 │   ├── Unity/            Unity 工程（引用核心库 DLL）
-│   │   ├── Assets/Scripts/     引导代码（GameBootstrap）
-│   │   └── Assets/Plugins/     框架核心库 DLL（构建脚本拷贝）
+│   │   ├── Assets/Scripts/     基础层框架（ModRuntime / ModLoaderService / ModContextImpl）
+│   │   ├── Assets/Plugins/     框架核心库 DLL（构建脚本拷贝）
+│   │   └── Assets/StreamingAssets/mods/   随运行时分发的 Mod（核心 Mod com.game.core）
 │   ├── src/             框架核心库源码（多目标 netstandard2.1;net8.0）
 │   │   ├── Game.Mod.Contract   契约层：manifest / modId / 版本 / 依赖拓扑
 │   │   ├── Game.ECS           ECS 世界：Entity / Component / System
 │   │   ├── Game.Messaging      消息总线：广播 / 定向 / 请求应答
 │   │   └── Game.ModLoader      ModLoader：发现 / 依赖解析 / 加载顺序
 │   ├── build-unity-dlls.sh   构建 netstandard2.1 DLL 并拷贝到 Unity
-│   └── build-unity-dlls.cmd   （Windows）
+│   ├── build-unity-dlls.cmd   （Windows）
+│   └── build-mod.sh          构建 Mod 源工程 → DLL（含 UnityEngine 引用）
 ├── relay_server/        中转服务工程（UDP 哑转发 + 控制面，.NET 8）
 ├── mod_server/          Mod 注册与下载服务工程（.NET 8）
-└── mods/                Mod 创作工程（示例 Mod 源工程）
+└── mods/                Mod 创作空间（核心 Mod + 游戏 Mod，根目录以 modId 命名）
 ```
 
 ## 快速开始
@@ -91,6 +93,9 @@ dotnet build runtime/Runtime.sln
 # 生成 Unity 用的框架 DLL（拷贝到 runtime/Unity/Assets/Plugins/）
 bash runtime/build-unity-dlls.sh      # 或 build-unity-dlls.cmd
 
+# 构建 Mod 源工程 → DLL（拷贝到 runtime/Unity/Assets/StreamingAssets/mods/）
+bash runtime/build-mod.sh
+
 # 中转服务
 dotnet build relay_server/RelayServer.sln
 
@@ -98,12 +103,13 @@ dotnet build relay_server/RelayServer.sln
 dotnet build mod_server/ModServer.sln
 ```
 
-### Unity 工程
+### Unity 工程（runtime = 基础层框架 + 核心 Mod）
 
 - 工程位置：`runtime/Unity`，版本 **2022.3.62f3**（用 Unity Hub 打开即可）
 - 框架核心库以 netstandard2.1 DLL 形式放在 `Assets/Plugins/`（纯逻辑，无 Unity API 依赖）
-- `Assets/Scripts/GameBootstrap.cs` 是运行时引导（装配 World/SystemGroup/MessageBus + Mod 发现）
-- Mod 源码编译成 entryDll 后放入 `Assets/StreamingAssets/mods/` 供发现加载
+- `Assets/Scripts/ModRuntime.cs` 是通用运行时引导（装配框架服务 + 加载 Mods），**不含任何游戏特定代码**
+- 核心 Mod（`com.game.core`）与第三方游戏 Mod 都编译成 entryDll 放入 `Assets/StreamingAssets/mods/`，运行时通用加载
+- Mod 可自带 MonoBehaviour 视图（表现层），运行时通用实例化
 
 ### 运行中转服务
 
@@ -135,3 +141,4 @@ MOD_PACKAGES_DIR=./packages dotnet run
 - **通信**：Mod 之间唯一契约是消息（广播/定向/请求应答）
 - **逻辑**：ECS 组织（状态在组件，逻辑在系统），服务端权威
 - **网络**：Mirror 三模式（Host/Dedicated/Relay），自建 Relay 为哑 UDP 转发
+- **分层**：runtime = 基础层（框架）+ 核心 Mod（com.game.core）；游戏 Mod 在 `mods/` 创作空间
