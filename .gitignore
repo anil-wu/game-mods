@@ -1,0 +1,35 @@
+# --- dotnet ---
+bin/
+obj/
+*.user
+.vs/
+
+# --- Unity (runtime/Unity) ---
+[Ll]ibrary/
+[Tt]emp/
+[Oo]bj/
+[Bb]uild/
+[Bb]uilds/
+[Ll]ogs/
+[Uu]ser[Ss]ettings/
+*.csproj
+*.sln
+*.unityproj
+*.pidb
+*.booproj
+*.svd
+*.pdb
+*.mdb
+*.opendb
+*.VC.db
+
+# --- built mod packages ---
+mods/**/*.mod
+mods/**/bin/
+mods/**/obj/
+
+# --- OS ---
+.DS_Store
+Thumbs.db
+
+*.log
