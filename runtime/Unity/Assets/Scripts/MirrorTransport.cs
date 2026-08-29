@@ -70,7 +70,9 @@ namespace Game.Runtime
 
         public void SendFromClient(byte[] frame)
         {
-            if (!NetworkClient.active) return;
+            // KCP 握手完成前（Connecting）静默丢弃——输入状态每帧重发，连接建立即恢复；
+            // NetworkClient.active 在 Connecting 期间即为 true，必须等 Connected
+            if (!NetworkClient.isConnected) return;
             NetworkClient.Send(new ModProtocolMsg { Payload = frame });
         }
 
