@@ -34,6 +34,16 @@ namespace Game.ECS
         /// <summary>预注册组件类型（等价于 Store&lt;T&gt;()，语义化别名）。</summary>
         public void RegisterComponent<T>() where T : struct, IComponent => Store<T>();
 
+        /// <summary>非泛型注册组件类型（跨 ABI 注册面，Rule 13；Mod 程序集内部代码仍可用泛型）。</summary>
+        public void RegisterComponent(Type componentType)
+        {
+            if (_stores.ContainsKey(componentType)) return;
+            // 经反射走一次泛型实例化（接入 HybridCLR 时需补充元数据，原型可接受）
+            typeof(World).GetMethod(nameof(RegisterComponent), Type.EmptyTypes)!
+                .MakeGenericMethod(componentType)
+                .Invoke(this, null);
+        }
+
         /// <summary>获取（或创建）某组件类型的存储。</summary>
         public ComponentStore<T> Store<T>() where T : struct, IComponent
         {

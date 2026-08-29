@@ -5,20 +5,45 @@ using Game.Mod.Contract.Json;
 namespace Game.Mod.Contract
 {
     /// <summary>
-    /// Mod 清单。源工程与包共用同一 schema，区别仅在于构建工具补全 files。
-    /// 序列化使用零依赖内置 JSON（netstandard2.1 兼容，供 Unity 2022.3 使用）。
+    /// Mod 清单 v2（§12.2 / §15.4）：一个 Mod = 一份 Manifest = Shared/Client/Server 模块 + 依赖 + 协议声明。
+    /// 解析兼容 v1 字段（modId / entryDll / dependencies 对象形式），序列化一律输出 v2。
     /// </summary>
     public sealed class ModManifest
     {
+        /// <summary>Mod 唯一标识（反向域名），发布后永不改变。</summary>
         public ModId ModId { get; set; }
 
         public ModVersion Version { get; set; }
 
-        public string EntryDll { get; set; } = "";
+        /// <summary>IMod 入口类型全名；空 = 扫描程序集中第一个 IMod 实现。</summary>
+        public string Entry { get; set; } = "";
 
-        public Dictionary<ModId, VersionRange> Dependencies { get; set; } = new();
+        /// <summary>Shared 模块程序集（双端加载），v2 必填。</summary>
+        public string SharedModule { get; set; } = "";
+
+        /// <summary>Client 模块程序集（仅 HasClient 环境加载），可空。</summary>
+        public string? ClientModule { get; set; }
+
+        /// <summary>Server 模块程序集（仅 HasServer 环境加载），可空。</summary>
+        public string? ServerModule { get; set; }
+
+        public List<ModDependency> Dependencies { get; set; } = new();
+
+        /// <summary>协议声明清单（供协商与查重，§15.4）。</summary>
+        public List<ProtocolDecl> Protocols { get; set; } = new();
 
         public List<FileEntry> Files { get; set; } = new();
+
+        /// <summary>根据依赖解析出的版本实例标识。</summary>
+        public string InstanceId => $"{ModId.Value}@{Version}";
+
+        /// <summary>按运行环境取应加载的模块程序集（§15.4 环境裁剪）。</summary>
+        public IEnumerable<string> ModulesFor(bool hasClient, bool hasServer)
+        {
+            if (!string.IsNullOrEmpty(SharedModule)) yield return SharedModule;
+            if (hasClient && !string.IsNullOrEmpty(ClientModule)) yield return ClientModule!;
+            if (hasServer && !string.IsNullOrEmpty(ServerModule)) yield return ServerModule!;
+        }
 
         public static ModManifest Parse(string json)
         {
@@ -31,18 +56,54 @@ namespace Game.Mod.Contract
             {
                 switch (kv.Key)
                 {
-                    case "modId":
+                    case "id":
+                    case "modId": // v1 兼容
                         m.ModId = new ModId(kv.Value.AsString);
                         break;
                     case "version":
                         m.Version = ModVersion.Parse(kv.Value.AsString);
                         break;
-                    case "entryDll":
-                        m.EntryDll = kv.Value.AsString;
+                    case "entry":
+                        m.Entry = kv.Value.AsString;
+                        break;
+                    case "entryDll": // v1 兼容 → shared 模块
+                        m.SharedModule = kv.Value.AsString;
+                        break;
+                    case "modules":
+                        foreach (var mod in kv.Value.AsObject)
+                        {
+                            switch (mod.Key)
+                            {
+                                case "shared": m.SharedModule = mod.Value.AsString; break;
+                                case "client": m.ClientModule = mod.Value.AsString; break;
+                                case "server": m.ServerModule = mod.Value.AsString; break;
+                            }
+                        }
                         break;
                     case "dependencies":
-                        foreach (var d in kv.Value.AsObject)
-                            m.Dependencies[new ModId(d.Key)] = VersionRange.Parse(d.Value.AsString);
+                        if (kv.Value.Kind == JsonKind.Object)
+                        {
+                            // v1 兼容：{ "com.xx.yy": ">=1.0.0" }
+                            foreach (var d in kv.Value.AsObject)
+                                m.Dependencies.Add(new ModDependency
+                                {
+                                    Id = new ModId(d.Key),
+                                    Version = VersionRange.Parse(d.Value.AsString),
+                                });
+                        }
+                        else
+                        {
+                            foreach (var d in kv.Value.AsArray)
+                                m.Dependencies.Add(ParseDependency(d));
+                        }
+                        break;
+                    case "network":
+                        foreach (var n in kv.Value.AsObject)
+                        {
+                            if (n.Key == "protocols")
+                                foreach (var p in n.Value.AsArray)
+                                    m.Protocols.Add(ParseProtocol(p));
+                        }
                         break;
                     case "files":
                         foreach (var f in kv.Value.AsArray)
@@ -52,9 +113,9 @@ namespace Game.Mod.Contract
             }
 
             if (string.IsNullOrEmpty(m.ModId.Value))
-                throw new FormatException("manifest 缺少 modId");
-            if (string.IsNullOrEmpty(m.EntryDll))
-                throw new FormatException("manifest 缺少 entryDll");
+                throw new FormatException("manifest 缺少 id");
+            if (string.IsNullOrEmpty(m.SharedModule))
+                throw new FormatException("manifest 缺少 modules.shared");
             return m;
         }
 
@@ -62,17 +123,59 @@ namespace Game.Mod.Contract
         {
             var root = new Dictionary<string, JsonValue>
             {
-                ["modId"] = JsonValue.Of(ModId.Value),
+                ["id"] = JsonValue.Of(ModId.Value),
                 ["version"] = JsonValue.Of(Version.ToString()),
-                ["entryDll"] = JsonValue.Of(EntryDll),
             };
+
+            if (!string.IsNullOrEmpty(Entry))
+                root["entry"] = JsonValue.Of(Entry);
+
+            var modules = new Dictionary<string, JsonValue> { ["shared"] = JsonValue.Of(SharedModule) };
+            if (ClientModule is { } cm) modules["client"] = JsonValue.Of(cm);
+            if (ServerModule is { } sm) modules["server"] = JsonValue.Of(sm);
+            root["modules"] = JsonValue.NewObject(modules);
 
             if (Dependencies.Count > 0)
             {
-                var deps = new Dictionary<string, JsonValue>();
-                foreach (var kv in Dependencies)
-                    deps[kv.Key.Value] = JsonValue.Of(kv.Value.ToString());
-                root["dependencies"] = JsonValue.NewObject(deps);
+                var deps = new List<JsonValue>();
+                foreach (var d in Dependencies)
+                {
+                    var obj = new Dictionary<string, JsonValue>
+                    {
+                        ["id"] = JsonValue.Of(d.Id.Value),
+                        ["version"] = JsonValue.Of(d.Version.ToString()),
+                    };
+                    if (d.Optional) obj["optional"] = JsonValue.Of(true);
+                    if (d.Scope != ModScope.Shared) obj["scope"] = JsonValue.Of(d.Scope.ToString().ToLowerInvariant());
+                    if (d.Features.Count > 0)
+                    {
+                        var feats = new List<JsonValue>();
+                        foreach (var f in d.Features) feats.Add(JsonValue.Of(f));
+                        obj["features"] = JsonValue.NewArray(feats);
+                    }
+                    deps.Add(JsonValue.NewObject(obj));
+                }
+                root["dependencies"] = JsonValue.NewArray(deps);
+            }
+
+            if (Protocols.Count > 0)
+            {
+                var protos = new List<JsonValue>();
+                foreach (var p in Protocols)
+                {
+                    protos.Add(JsonValue.NewObject(new Dictionary<string, JsonValue>
+                    {
+                        ["id"] = JsonValue.Of(p.Path),
+                        ["version"] = JsonValue.Of((long)p.Version),
+                        ["direction"] = JsonValue.Of(p.Direction.ToString()),
+                        ["delivery"] = JsonValue.Of(p.Delivery.ToString()),
+                        ["frequency"] = JsonValue.Of(p.Frequency.ToString()),
+                    }));
+                }
+                root["network"] = JsonValue.NewObject(new Dictionary<string, JsonValue>
+                {
+                    ["protocols"] = JsonValue.NewArray(protos),
+                });
             }
 
             if (Files.Count > 0)
@@ -92,6 +195,76 @@ namespace Game.Mod.Contract
             }
 
             return JsonValue.NewObject(root).ToJsonString();
+        }
+
+        private static ModDependency ParseDependency(JsonValue v)
+        {
+            var d = new ModDependency();
+            foreach (var kv in v.AsObject)
+            {
+                switch (kv.Key)
+                {
+                    case "id": d.Id = new ModId(kv.Value.AsString); break;
+                    case "version": d.Version = VersionRange.Parse(kv.Value.AsString); break;
+                    case "optional": d.Optional = kv.Value.AsBool; break;
+                    case "required": d.Optional = !kv.Value.AsBool; break;
+                    case "scope":
+                        d.Scope = kv.Value.AsString.ToLowerInvariant() switch
+                        {
+                            "shared" => ModScope.Shared,
+                            "client" => ModScope.Client,
+                            "server" => ModScope.Server,
+                            var s => throw new FormatException($"未知依赖 scope: '{s}'"),
+                        };
+                        break;
+                    case "features":
+                        foreach (var f in kv.Value.AsArray) d.Features.Add(f.AsString);
+                        break;
+                }
+            }
+            if (string.IsNullOrEmpty(d.Id.Value))
+                throw new FormatException("dependency 缺少 id");
+            return d;
+        }
+
+        private static ProtocolDecl ParseProtocol(JsonValue v)
+        {
+            var p = new ProtocolDecl();
+            foreach (var kv in v.AsObject)
+            {
+                switch (kv.Key)
+                {
+                    case "id": p.Path = kv.Value.AsString; break;
+                    case "version": p.Version = (ushort)kv.Value.AsLong; break;
+                    case "direction":
+                        p.Direction = kv.Value.AsString switch
+                        {
+                            "ClientToServer" => NetworkDirection.ClientToServer,
+                            "ServerToClient" => NetworkDirection.ServerToClient,
+                            var s => throw new FormatException($"未知协议方向: '{s}'"),
+                        };
+                        break;
+                    case "delivery":
+                        p.Delivery = kv.Value.AsString switch
+                        {
+                            "Reliable" => Delivery.Reliable,
+                            "Unreliable" => Delivery.Unreliable,
+                            "Sequenced" => Delivery.Sequenced,
+                            _ => Delivery.Reliable,
+                        };
+                        break;
+                    case "frequency":
+                        p.Frequency = kv.Value.AsString switch
+                        {
+                            "High" => Frequency.High,
+                            _ => Frequency.Low,
+                        };
+                        break;
+                }
+            }
+            if (string.IsNullOrEmpty(p.Path))
+                throw new FormatException("protocol 缺少 id");
+            return p;
         }
 
         private static FileEntry ParseFile(JsonValue v)
@@ -125,9 +298,5 @@ namespace Game.Mod.Contract
             FileType.Asset => "asset",
             _ => "code",
         };
-
-        /// <summary>根据依赖解析出的版本实例标识。</summary>
-        public string InstanceId => $"{ModId.Value}@{Version}";
     }
-
 }

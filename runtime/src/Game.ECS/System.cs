@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using Game.Messaging;
+using Game.Mod.Contract;
 
 namespace Game.ECS
 {
@@ -58,10 +59,12 @@ namespace Game.ECS
 
     /// <summary>
     /// 系统组：按注册顺序执行。Server 端执行 Server+Shared，Client 端执行 Client+Shared。
+    /// 每个系统注册归属一个 ModObject（V2 §7）：Mod 卸载时 RemoveAll(owner) 强制移除（GameObject Pool 属于 Mod，
+    /// ECS World 属于 Game Runtime，Mod 只注册 Components / Systems / Queries，§9.2）。
     /// </summary>
     public sealed class SystemGroup
     {
-        private readonly List<(ISystem System, SystemSide Side)> _systems = new();
+        private readonly List<(ISystem System, SystemSide Side, ModId Owner)> _systems = new();
         private readonly MessageBus _messages;
 
         public SystemGroup(MessageBus messages)
@@ -69,14 +72,25 @@ namespace Game.ECS
             _messages = messages;
         }
 
-        public void Add(ISystem system, SystemSide side) => _systems.Add((system, side));
+        public void Add(ISystem system, SystemSide side, ModId owner) => _systems.Add((system, side, owner));
+
+        /// <summary>移除某 Mod 注册的全部系统（卸载流程由 Core 执行）。</summary>
+        public void RemoveAll(ModId owner) => _systems.RemoveAll(s => s.Owner == owner);
 
         public int Count => _systems.Count;
+
+        public int CountOf(ModId owner)
+        {
+            var n = 0;
+            foreach (var s in _systems)
+                if (s.Owner == owner) n++;
+            return n;
+        }
 
         public void Update(World world, float deltaTime, SystemSide side)
         {
             var ctx = new SystemContext(world, _messages, deltaTime);
-            foreach (var (system, s) in _systems)
+            foreach (var (system, s, _) in _systems)
             {
                 if (s == SystemSide.Shared || s == side)
                     system.Update(ctx);
@@ -87,7 +101,7 @@ namespace Game.ECS
         public void UpdateAll(World world, float deltaTime)
         {
             var ctx = new SystemContext(world, _messages, deltaTime);
-            foreach (var (system, _) in _systems)
+            foreach (var (system, _, _) in _systems)
                 system.Update(ctx);
         }
     }
