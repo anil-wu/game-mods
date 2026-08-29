@@ -123,6 +123,15 @@ namespace Game.Mod.Runtime
             _packages[manifest.ModId] = new ModPackage(manifest, contentRoot ?? "");
         }
 
+        /// <summary>注册清单 + 预加载程序集（测试 / 嵌入式路径：Load(id) 递归加载依赖时直接使用）。</summary>
+        public void RegisterManifest(ModManifest manifest, System.Reflection.Assembly[] assemblies, string? contentRoot = null)
+        {
+            RegisterManifest(manifest, contentRoot);
+            _preloadedAssemblies[manifest.ModId] = (assemblies, contentRoot);
+        }
+
+        private readonly Dictionary<ModId, (System.Reflection.Assembly[] Assemblies, string? ContentRoot)> _preloadedAssemblies = new();
+
         // ---- IModManager 语义（显式调用方） ----
 
         public ModObject? Get(ModId id) => _loaded.TryGetValue(id, out var m) ? m : null;
@@ -147,6 +156,9 @@ namespace Game.Mod.Runtime
                     Load(dep.Id); // Required：递归先加载依赖（§12.3 依赖在前）
                 }
             }
+            // 预加载程序集路径（测试 / 嵌入式）优先于物理包文件
+            if (_preloadedAssemblies.TryGetValue(id, out var preloaded))
+                return CreateModObject(manifest, preloaded.Assemblies, preloaded.ContentRoot, null);
             return LoadFromPackage(package);
         }
 

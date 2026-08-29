@@ -58,9 +58,15 @@ namespace Com.Sample.PushBox
             => world.Has<PushIntent>(player) ? world.Get<PushIntent>(player).Direction : 0f;
     }
 
-    /// <summary>胜负判定系统：箱子进入对方区域即判胜。服务端权威。</summary>
+    /// <summary>
+    /// 胜负判定系统：箱子进入对方区域即判胜。服务端权威。
+    /// 网络广播 / 事件通知交给 Mod 注入的 Sink（系统不直接持有网络/消息上下文）。
+    /// </summary>
     public sealed class WinCheckSystem : ISystem
     {
+        /// <summary>判胜回调（由 PushBoxMod 在 Register 时注入：网络广播 + 本地事件）。</summary>
+        public Action<PlayerSide>? OnGameWon;
+
         public void Update(SystemContext ctx)
         {
             foreach (var (sessionEntity, session) in ctx.Query<Session>())
@@ -84,7 +90,7 @@ namespace Com.Sample.PushBox
                 ctx.World.Add(sessionEntity, s);
 
                 if (s.Phase == GamePhase.Won)
-                    ctx.Messages.Broadcast(new GameWonMsg { Winner = s.Winner });
+                    OnGameWon?.Invoke(s.Winner);
             }
         }
     }

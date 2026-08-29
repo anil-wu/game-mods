@@ -1,72 +1,107 @@
 using Game.ECS;
 using Game.Messaging;
+using Game.Mod.Contract;
 
 namespace TestRunner
 {
+    /// <summary>ECS 测试：组件存储 / 查询 / 销毁 / 系统归属。</summary>
     public static class EcsTests
     {
-        private struct Position : IComponent { public float X; public float Y; }
-        private struct Velocity : IComponent { public float X; public float Y; }
-        private struct Dead : IComponent { }
+        private struct Pos : IComponent { public float X; }
+        private struct Vel : IComponent { public float X; }
+
+        private sealed class MoveSystem : ISystem
+        {
+            public void Update(SystemContext ctx)
+            {
+                foreach (var (e, vel, pos) in ctx.Query<Vel, Pos>())
+                {
+                    var p = pos;
+                    p.X += vel.X * ctx.DeltaTime;
+                    ctx.World.Add(e, p);
+                }
+            }
+        }
 
         [Test]
         public static void Add_Get_Has()
         {
-            var world = new World();
-            var e = world.CreateEntity();
-            world.Add(e, new Position { X = 1, Y = 2 });
-            Assert.True(world.Has<Position>(e), "Has");
-            Assert.True(world.TryGet(e, out Position p) && p.X == 1, "TryGet 值");
-            Assert.True(!world.Has<Dead>(e), "无 Dead 组件");
+            var w = new World();
+            var e = w.CreateEntity();
+            w.Add(e, new Pos { X = 5 });
+            Assert.True(w.Has<Pos>(e));
+            Assert.Equal(5f, w.Get<Pos>(e).X);
         }
 
         [Test]
         public static void Query_TwoComponents()
         {
-            var world = new World();
-            var e = world.CreateEntity();
-            world.Add(e, new Position { X = 1, Y = 2 });
-            world.Add(e, new Velocity { X = 3, Y = 4 });
+            var w = new World();
+            var bus = new MessageBus();
+            var systems = new SystemGroup(bus);
+            systems.Add(new MoveSystem(), SystemSide.Shared, new ModId("com.test.ecs"));
 
-            var ctx = new SystemContext(world, new MessageBus(), 0.016f);
-            int count = 0;
-            foreach (var (ent, vel, pos) in ctx.Query<Velocity, Position>())
-            {
-                count++;
-                Assert.True(ent == e, "命中实体");
-                Assert.True(vel.X == 3 && pos.Y == 2, "组件值");
-            }
-            Assert.Equal(1, count, "命中 1 个实体");
+            var e = w.CreateEntity();
+            w.Add(e, new Pos { X = 0 });
+            w.Add(e, new Vel { X = 2 });
+            systems.UpdateAll(w, 0.5f);
+            Assert.Equal(1f, w.Get<Pos>(e).X);
         }
 
         [Test]
         public static void Destroy_RemovesComponents()
         {
-            var world = new World();
-            var e = world.CreateEntity();
-            world.Add(e, new Position { X = 1 });
-            world.Destroy(e);
-            Assert.True(!world.Has<Position>(e), "销毁后组件移除");
-            Assert.Equal(0, world.EntityCount, "实体计数归零");
+            var w = new World();
+            var e = w.CreateEntity();
+            w.Add(e, new Pos { X = 1 });
+            w.Destroy(e);
+            Assert.True(!w.Has<Pos>(e));
+            Assert.True(!w.Exists(e));
         }
 
         [Test]
-        public static void WriteBack_DuringQuery()
+        public static void NonGeneric_RegisterComponent()
         {
-            // 回归：系统在查询期间写回同一组件类型（如 WinCheckSystem 写回 Session），
-            // 不应抛“集合被修改”异常（Mono 下 Dictionary 更新现有键会失效枚举器）。
-            var world = new World();
-            var e = world.CreateEntity();
-            world.Add(e, new Position { X = 1 });
+            // 跨 ABI 注册面为非泛型（Rule 13）
+            var w = new World();
+            w.RegisterComponent(typeof(Pos));
+            Assert.True(w.TryGetStore(typeof(Pos)) is not null);
+        }
 
-            var ctx = new SystemContext(world, new MessageBus(), 0.016f);
-            foreach (var (ent, pos) in ctx.Query<Position>())
-            {
-                var p = pos; // foreach 解构变量只读，复制到可变局部变量
-                p.X += 1;
-                world.Add(ent, p); // 查询期间写回
-            }
-            Assert.True(world.Get<Position>(e).X == 2, "查询期间写回应生效");
+        [Test]
+        public static void SystemGroup_OwnerTracking_And_RemoveAll()
+        {
+            var bus = new MessageBus();
+            var systems = new SystemGroup(bus);
+            var ownerA = new ModId("com.test.a");
+            var ownerB = new ModId("com.test.b");
+            systems.Add(new MoveSystem(), SystemSide.Shared, ownerA);
+            systems.Add(new MoveSystem(), SystemSide.Shared, ownerA);
+            systems.Add(new MoveSystem(), SystemSide.Shared, ownerB);
+
+            Assert.Equal(2, systems.CountOf(ownerA));
+            systems.RemoveAll(ownerA); // 卸载时按 owner 移除（§9.2）
+            Assert.Equal(0, systems.CountOf(ownerA));
+            Assert.Equal(1, systems.CountOf(ownerB));
+            Assert.Equal(1, systems.Count);
+        }
+
+        [Test]
+        public static void SystemGroup_SideFiltering()
+        {
+            var w = new World();
+            var bus = new MessageBus();
+            var systems = new SystemGroup(bus);
+            var owner = new ModId("com.test.ecs");
+            var e = w.CreateEntity();
+            w.Add(e, new Pos { X = 0 });
+            w.Add(e, new Vel { X = 1 });
+
+            systems.Add(new MoveSystem(), SystemSide.Server, owner);
+            systems.Update(w, 1f, SystemSide.Client); // Client 侧不执行 Server 系统
+            Assert.Equal(0f, w.Get<Pos>(e).X);
+            systems.Update(w, 1f, SystemSide.Server);
+            Assert.Equal(1f, w.Get<Pos>(e).X);
         }
     }
 }

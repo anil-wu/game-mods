@@ -124,6 +124,7 @@ namespace Game.Mod.Contract.Wire
             while (_cursor < _buffer.Length)
             {
                 var fid = ReadRawU16(ref _cursor);
+                if (_cursor >= _buffer.Length) throw new PayloadFormatException("字段头截断");
                 var type = (WireType)_buffer[_cursor++];
                 var dataStart = _cursor;
                 SkipData(type);

@@ -1,10 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Reflection;
-using Game.ECS;
-using Game.Messaging;
-using Game.Mod.Contract;
-using Game.ModLoader;
 
 namespace TestRunner
 {
@@ -24,6 +21,23 @@ namespace TestRunner
         {
             if (!EqualityComparer<T>.Default.Equals(expected, actual))
                 throw new Exception($"{message}（期望 {expected}，实际 {actual}）");
+        }
+
+        public static void Throws<T>(Action action, string message = "") where T : Exception
+        {
+            try
+            {
+                action();
+            }
+            catch (T)
+            {
+                return;
+            }
+            catch (Exception e)
+            {
+                throw new Exception($"{message}（期望 {typeof(T).Name}，实际 {e.GetType().Name}: {e.Message}）");
+            }
+            throw new Exception($"{message}（期望 {typeof(T).Name}，但未抛异常）");
         }
     }
 
@@ -57,31 +71,21 @@ namespace TestRunner
         }
     }
 
-    /// <summary>静默日志（测试用）。</summary>
-    public sealed class SilentLog : ILog
+    /// <summary>仓库根目录定位（从 bin 目录上溯）。</summary>
+    public static class RepoPaths
     {
-        public void Info(string message) { }
-        public void Warn(string message) { }
-        public void Error(string message) { }
-    }
+        public static string Root { get; } = FindRoot();
 
-    /// <summary>测试用 IModContext。</summary>
-    public sealed class TestModContext : IModContext
-    {
-        public ModId ModId { get; }
-        public ModVersion Version { get; }
-        public World World { get; }
-        public SystemGroup Systems { get; }
-        public MessageBus Messages { get; }
-        public ILog Log { get; } = new SilentLog();
+        public static string ModDir(string modId) => Path.Combine(Root, "mods", modId);
 
-        public TestModContext(string modId, string version, World world, SystemGroup systems, MessageBus messages)
+        public static string ModJson(string modId) => File.ReadAllText(Path.Combine(ModDir(modId), "mod.json"));
+
+        private static string FindRoot()
         {
-            ModId = new ModId(modId);
-            Version = ModVersion.Parse(version);
-            World = world;
-            Systems = systems;
-            Messages = messages;
+            var dir = new DirectoryInfo(AppContext.BaseDirectory);
+            while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "README.md")))
+                dir = dir.Parent;
+            return dir?.FullName ?? throw new Exception("无法定位仓库根目录");
         }
     }
 }

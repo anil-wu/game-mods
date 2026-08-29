@@ -15,20 +15,26 @@ UNITY_HOME = os.environ.get("UNITY_HOME", "D:/Programs/Unity/2022.3.62f3/Editor"
 UNITYENGINE = os.path.join(UNITY_HOME, "Data", "Managed", "UnityEngine")
 TARGET = os.path.join(ROOT, "runtime", "Unity", "Assets", "StreamingAssets", "mods")
 TMP = os.path.join(ROOT, ".tmp_modbuild")
-FRAMEWORK = ["Game.Mod.Contract", "Game.ECS", "Game.Messaging", "Game.ModLoader"]
+FRAMEWORK = ["Game.Mod.Contract", "Game.ECS", "Game.Messaging", "Game.Mod.Runtime"]
 UNITY_REFS = ["UnityEngine.CoreModule", "UnityEngine.IMGUIModule", "UnityEngine.InputLegacyModule"]
 
 
 def load_mods():
+    """读取 mods/*/mod.json（Manifest v2：id / modules / dependencies 数组）。"""
     mods = {}
     for path in glob.glob(os.path.join(ROOT, "mods", "*", "mod.json")):
         with open(path, encoding="utf-8") as f:
             m = json.load(f)
-        mods[m["modId"]] = {
+        modules = m.get("modules", {})
+        entry = modules.get("shared") or m.get("entryDll")  # v2 优先，v1 兜底
+        deps = []
+        for d in m.get("dependencies", []):
+            deps.append(d["id"] if isinstance(d, dict) else d)
+        mods[m["id"]] = {
             "dir": os.path.dirname(path),
-            "id": m["modId"],
-            "entry": m["entryDll"],
-            "deps": list(m.get("dependencies", {}).keys()),
+            "id": m["id"],
+            "entry": entry,
+            "deps": deps,
         }
     return mods
 

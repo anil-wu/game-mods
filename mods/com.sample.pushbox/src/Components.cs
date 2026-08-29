@@ -42,19 +42,4 @@ namespace Com.Sample.PushBox
         public GamePhase Phase;
         public PlayerSide Winner;
     }
-
-    // ---- 消息（Mod 间通信契约） ----
-
-    /// <summary>玩家输入：推 / 不推（客户端 → 服务端）。</summary>
-    public struct PushInputMsg
-    {
-        public PlayerSide Side;
-        public bool Pushing;
-    }
-
-    /// <summary>胜负事件（服务端广播）。</summary>
-    public struct GameWonMsg
-    {
-        public PlayerSide Winner;
-    }
 }

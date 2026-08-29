@@ -1,5 +1,5 @@
 using Game.ECS;
-using Game.ModLoader;
+using Game.Mod.Runtime;
 
 namespace Com.Sample.Hello
 {
@@ -23,21 +23,23 @@ namespace Com.Sample.Hello
         }
     }
 
-    // ---- 入口 ----
-    public sealed class ModEntry : IMod
+    // ---- 入口（IMod v2：仅 Register / Unregister，Rule 1） ----
+    public sealed class HelloMod : IMod
     {
-        public void OnLoad(IModContext context)
+        public void Register(IModContext context)
         {
-            context.World.RegisterComponent<Position>();
-            context.World.RegisterComponent<Velocity>();
-            context.Systems.Add(new MoveSystem(), SystemSide.Shared);
+            context.Ecs.RegisterComponent(typeof(Position));
+            context.Ecs.RegisterComponent(typeof(Velocity));
+            context.Ecs.RegisterSystem(new MoveSystem(), SystemSide.Shared);
 
-            // 示例：创建一个带移动组件的实体
-            var entity = context.World.CreateEntity();
-            context.World.Add(entity, new Position { X = 0, Y = 0 });
-            context.World.Add(entity, new Velocity { X = 1, Y = 0 });
+            context.Log.Info(
+                $"Mod '{context.Info.Id}' v{context.Info.Version} 已注册" +
+                $"（HasClient={context.HasClient}, HasServer={context.HasServer}）");
+        }
 
-            context.Log.Info($"Mod '{context.ModId}' v{context.Version} 已加载");
+        public void Unregister(IModContext context)
+        {
+            context.Log.Info($"Mod '{context.Info.Id}' 已注销");
         }
     }
 }

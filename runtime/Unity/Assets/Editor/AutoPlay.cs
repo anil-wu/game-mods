@@ -1,3 +1,4 @@
+using Game.Mod.Runtime;
 using UnityEditor;
 using UnityEngine;
 
@@ -30,10 +31,11 @@ namespace Game.Runtime.Editor
             if (_frames < 30) return;
 
             EditorApplication.update -= OnUpdate;
-            bool ok = ModRuntime.Initialized && ModRuntime.Loader.LoadedMods.Count >= 2;
+            var count = ModRuntime.Host?.Manager.Loaded.Count ?? 0;
+            bool ok = ModRuntime.Initialized && count >= 2;
             Debug.Log(ok
-                ? $"[AutoPlay] OK: 已加载 {ModRuntime.Loader.LoadedMods.Count} 个 Mod"
-                : $"[AutoPlay] FAIL: Initialized={ModRuntime.Initialized}, Mods={ModRuntime.Loader.LoadedMods.Count}, Errors={string.Join("; ", ModRuntime.Loader.Errors)}");
+                ? $"[AutoPlay] OK: 已加载 {count} 个 Mod"
+                : $"[AutoPlay] FAIL: Initialized={ModRuntime.Initialized}, Mods={count}");
 
             EditorApplication.ExitPlaymode();
             EditorApplication.Exit(ok ? 0 : 1);
