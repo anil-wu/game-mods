@@ -1,5 +1,8 @@
 {
-  "modId": "com.game.core",
+  "id": "com.game.core",
   "version": "1.0.0",
-  "entryDll": "com.game.core.dll"
+  "entry": "Com.Game.Core.CoreMod",
+  "modules": {
+    "shared": "com.game.core.dll"
+  }
 }

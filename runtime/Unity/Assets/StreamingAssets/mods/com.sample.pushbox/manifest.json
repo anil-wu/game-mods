@@ -1,9 +1,18 @@
 {
-  "modId": "com.sample.pushbox",
-  "version": "0.1.0",
-  "entryDll": "com.sample.pushbox.dll",
-  "dependencies": {
-    "com.game.core": ">=1.0.0",
-    "com.game.protocol": ">=1.0.0"
+  "id": "com.sample.pushbox",
+  "version": "0.2.0",
+  "entry": "Com.Sample.PushBox.PushBoxMod",
+  "modules": {
+    "shared": "com.sample.pushbox.dll"
+  },
+  "dependencies": [
+    { "id": "com.game.core", "version": ">=1.0.0" },
+    { "id": "com.game.network", "version": ">=1.0.0" }
+  ],
+  "network": {
+    "protocols": [
+      { "id": "input", "version": 1, "direction": "ClientToServer" },
+      { "id": "game_won", "version": 1, "direction": "ServerToClient" }
+    ]
   }
 }

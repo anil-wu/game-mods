@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Game.Mod.Runtime;
+using kcp2k;
 using Mirror;
 using UnityEngine;
 
@@ -30,6 +31,10 @@ namespace Game.Runtime
 
         private void Awake()
         {
+            // 无 NetworkManager 场景：自行装配 KCP 传输层（Provider 层实现细节，§11.2）
+            if (Transport.active == null)
+                Transport.active = gameObject.AddComponent<KcpTransport>();
+
             NetworkServer.RegisterHandler<ModProtocolMsg>(OnServerMsg, false);
             NetworkClient.RegisterHandler<ModProtocolMsg>(OnClientMsg, false);
         }
@@ -43,7 +48,7 @@ namespace Game.Runtime
         public void StartServer()
         {
             if (_serverUp) return;
-            NetworkServer.Start();
+            NetworkServer.Listen(16);
             _serverUp = true;
         }
 
@@ -56,8 +61,8 @@ namespace Game.Runtime
 
         public void Stop()
         {
-            if (_clientUp) { NetworkClient.Disconnect(); _clientUp = false; }
-            if (_serverUp) { NetworkServer.Stop(); _serverUp = false; }
+            if (_clientUp) { NetworkClient.Shutdown(); _clientUp = false; }
+            if (_serverUp) { NetworkServer.Shutdown(); _serverUp = false; }
             _connections.Clear();
         }
 

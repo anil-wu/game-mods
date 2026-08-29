@@ -15,7 +15,7 @@ fi
 echo "   编译通过"
 
 echo ">>> 2. Play 模式冒烟测试（加载 Mods）"
-"$UNITY" -batchmode -nographics -executeMethod Game.Runtime.Editor.AutoPlay.Run -quit -projectPath "$PROJECT" -logFile /tmp/unity-play.log
+"$UNITY" -batchmode -nographics -executeMethod Game.Runtime.Editor.AutoPlay.Run -projectPath "$PROJECT" -logFile /tmp/unity-play.log
 if grep -q "\[AutoPlay\] OK" /tmp/unity-play.log; then
   echo "   Play 冒烟通过"
 else

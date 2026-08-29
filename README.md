@@ -2,7 +2,44 @@
 
 基于 Mod 概念的 Unity 游戏，技术栈：Unity + Mirror（网络）+ 轻量托管 ECS（逻辑组织）。
 
-完整设计文档见 [`design/mod-architecture.md`](design/mod-architecture.md)。
+**当前架构：V2.0**。权威设计文档见 [`design/Unity_Mod_Runtime_架构设计V2.0.md`](design/Unity_Mod_Runtime_架构设计V2.0.md)
+（V1 文档 [`design/mod-architecture.md`](design/mod-architecture.md) 仅作历史参考；迁移计划见 [`design/migration-v2-plan.md`](design/migration-v2-plan.md)）。
+
+> **Core 管运行时，Network Mod 管网络，ECS Runtime 管 ECS 世界，Mod 管自己的业务、资源、引用和对象池；Mod 之间只通过公开 API/Service 协作。**
+
+## 架构速览（V2.0）
+
+```
+Core（AOT，稳定 ABI，无泛型 Rule 13）
+│
+├── ModRuntime      ModManager / ModLoader / ModResolver / ModObject
+├── ECS Runtime     World / System（注册归属 ModObject）
+├── Message Runtime MessageBus（二进制载荷 + 归属校验 + 强制退订）
+├── 抽象接口         IMod / IModContext / INetworkContext / IUiContext / ...
+└── Resource / Pool Runtime（Id + 非泛型基础设施）
+
+Framework Mods（基础设施 Mod，加载顺序最前，禁止热卸载 §10.4）
+│
+├── com.game.network   协议注册表 / 路由 / 方向与版本校验 / 统计（唯一网络出入口）
+└── com.game.ui        WindowManager（窗口注册表 / 层级 / CloseAll(modId)）
+
+Gameplay Mods
+│
+├── com.game.core      游戏基础内容（随运行时分发）
+├── com.sample.hello   示例：ECS 组件 + 系统
+└── com.sample.pushbox 示例：联机推箱子（协议 + ECS 权威 + 事件）
+```
+
+核心规则（V2.0 §16 摘录）：
+
+- **IMod 只有 `Register` / `Unregister`**（Rule 1）；Client/Server/Host 是 Context 能力（`HasClient/HasServer`，Rule 2）
+- **无泛型 ABI**：跨 ABI 一律 Id + 非泛型签名（Rule 13）
+- **跨 Mod 通信全部是二进制**：消息载荷、ModCall、网络协议共用字段编号线格式（Rule 14）
+- **消息 = Event（Pub/Sub 无返回，谁定义谁发布）**；需要返回的跨 Mod 调用走 **ModCall**（`context.Mods.Call`，Rule 6/11）
+- **跨 Mod 只有四条 Core 中介通道**：ModCall / Message / UI / Resource（Rule 12）
+- **协议 ID = 稳定哈希** `xxHash32("{ModId}:{Path}")`（Rule 16）；Role × Path 正交（Rule 15）；Host 本地客户端走完整回环管线
+- **依赖由 Manifest 声明**（DAG + SemVer + Client/Server Scope，Rule 7/8）；联网会话中禁止热卸载协议 Mod（Rule 17）
+- **契约 = 文档**：Mod 间不共享契约程序集，字节流是唯一事实来源（Rule 19，示例见 `mods/com.sample.pushbox/CONTRACT.md`）
 
 ## 分支规范
 
@@ -50,36 +87,33 @@ feature/* ──(PR 合并)──► develop ──(发布合并)──► maste
 | `perf` | 性能优化 |
 | `test` | 测试相关 |
 
-示例：
-
-- `feat(contract): 新增 ModManifest 包格式定义`
-- `fix(ecs): 修复实体销毁后组件残留`
-- `refactor(relay): 重构房间路由表为线程安全`
-
-破坏性变更：在 type 后加 `!`，或在 footer 写 `BREAKING CHANGE:`：
-
-- `feat(api)!: 重构 Mod 加载接口`
+破坏性变更：在 type 后加 `!`，或在 footer 写 `BREAKING CHANGE:`。
 
 ## 目录结构
 
 ```
-├── design/              设计文档
-├── runtime/             Mod 运行时（基础层框架 + 核心 Mod，Unity 2022.3.62f3）
+├── design/              设计文档（V2.0 为权威）
+├── runtime/             Mod 运行时（Core 框架 + 随运行时分发的 Mod，Unity 2022.3.62f3）
 │   ├── Unity/            Unity 工程（引用核心库 DLL）
-│   │   ├── Assets/Scripts/     基础层框架（ModRuntime / ModLoaderService / ModContextImpl）
+│   │   ├── Assets/Scripts/     基础层引导（ModRuntime / MirrorTransport / UnityLog）
 │   │   ├── Assets/Plugins/     框架核心库 DLL（构建脚本拷贝）
-│   │   └── Assets/StreamingAssets/mods/   随运行时分发的 Mod（核心 Mod com.game.core）
+│   │   └── Assets/StreamingAssets/mods/   随运行时分发的 Mod 包
 │   ├── src/             框架核心库源码（多目标 netstandard2.1;net8.0）
-│   │   ├── Game.Mod.Contract   契约层：manifest / modId / 版本 / 依赖拓扑
-│   │   ├── Game.ECS           ECS 世界：Entity / Component / System
-│   │   ├── Game.Messaging      消息总线：广播 / 定向 / 请求应答
-│   │   └── Game.ModLoader      ModLoader：发现 / 依赖解析 / 加载顺序
+│   │   ├── Game.Mod.Contract   契约层：Id 族 / 版本 / Manifest v2 / 线格式原语 / xxHash32
+│   │   ├── Game.ECS           ECS 世界：Entity / Component / System（归属 ModObject）
+│   │   ├── Game.Messaging      消息总线 v2：Envelope / 二进制载荷 / 配额 / Trace
+│   │   └── Game.Mod.Runtime    Mod 运行时：IMod / IModContext / ModObject / ModManager
 │   ├── build-unity-dlls.sh   构建 netstandard2.1 DLL 并拷贝到 Unity
-│   ├── build-unity-dlls.cmd   （Windows）
-│   └── build-mod.sh          构建 Mod 源工程 → DLL（含 UnityEngine 引用）
+│   └── build-mod.py          构建 mods/ 创作空间 → DLL + manifest 拷到 Unity
 ├── relay_server/        中转服务工程（UDP 哑转发 + 控制面，.NET 8）
 ├── mod_server/          Mod 注册与下载服务工程（.NET 8）
-└── mods/                Mod 创作空间（核心 Mod + 游戏 Mod，根目录以 modId 命名）
+├── mods/                Mod 创作空间（每个 Mod 一个目录，以 modId 命名）
+│   ├── com.game.network      Network.Mod（框架：协议注册/路由/校验/统计 + Loopback）
+│   ├── com.game.ui           UI.Mod（框架：WindowManager）
+│   ├── com.game.core         核心 Mod（游戏基础内容）
+│   ├── com.sample.hello      示例 Mod（ECS）
+│   └── com.sample.pushbox    示例 Mod（联机推箱子 + CONTRACT.md 契约文档）
+└── tests/               无头测试（纯 .NET，无需 Unity）
 ```
 
 ## 快速开始
@@ -93,10 +127,10 @@ dotnet build runtime/Runtime.sln
 # 生成 Unity 用的框架 DLL（拷贝到 runtime/Unity/Assets/Plugins/）
 bash runtime/build-unity-dlls.sh      # 或 build-unity-dlls.cmd
 
-# 构建 Mod 源工程 → DLL（拷贝到 runtime/Unity/Assets/StreamingAssets/mods/）
-bash runtime/build-mod.sh
+# 构建全部 Mod → DLL + manifest（拷贝到 runtime/Unity/Assets/StreamingAssets/mods/）
+python runtime/build-mod.py           # 或 bash runtime/build-mod.sh
 
-# 运行全部无头测试（核心库 + 协议 Mod + 推箱子逻辑，纯 .NET 无需 Unity）
+# 运行全部无头测试（契约/消息/ECS/Mod运行时/网络/UI/推箱子端到端，纯 .NET 无需 Unity）
 bash tests/run.sh
 
 # 中转服务
@@ -106,14 +140,14 @@ dotnet build relay_server/RelayServer.sln
 dotnet build mod_server/ModServer.sln
 ```
 
-### Unity 工程（runtime = 基础层框架 + 核心 Mod）
+### Unity 工程（runtime = Core 框架 + 随运行时分发的 Mod）
 
 - 工程位置：`runtime/Unity`，版本 **2022.3.62f3**（用 Unity Hub 打开即可）
 - **Mirror 依赖**：本环境 GitHub HTTPS 不通，Mirror 源码不进仓库，**首次使用先运行 `bash runtime/setup-mirror.sh`**（SSH 浅克隆 + 拷贝到 `Assets/Mirror/`）
 - 框架核心库以 netstandard2.1 DLL 形式放在 `Assets/Plugins/`（纯逻辑，无 Unity API 依赖）
-- `Assets/Scripts/ModRuntime.cs` 是通用运行时引导（装配框架服务 + 加载 Mods），**不含任何游戏特定代码**
-- 核心 Mod（`com.game.core`）与第三方游戏 Mod 都编译成 entryDll 放入 `Assets/StreamingAssets/mods/`，运行时通用加载
-- Mod 可自带 MonoBehaviour 视图（表现层），运行时通用实例化
+- `Assets/Scripts/ModRuntime.cs` 是通用运行时引导（Host 角色装配 Core 能力 + 加载 Mods + 接线网络 Provider），**不含任何游戏特定代码**
+- 所有 Mod（框架 Mod 与游戏 Mod）编译为 DLL 放入 `Assets/StreamingAssets/mods/`，运行时按 Manifest v2 依赖拓扑加载
+- Mod 可自带 MonoBehaviour 视图（表现层），运行时经 `ModManager.ModLoaded` 通用实例化
 - 自动验证（需先关闭 Unity 编辑器）：`bash runtime/verify-unity.sh`（编译检查 + Play 模式冒烟）
 
 ### 运行中转服务
@@ -141,9 +175,10 @@ MOD_PACKAGES_DIR=./packages dotnet run
 
 ## 设计要点
 
-- **Mod 包**：`manifest.json`（modId/version/entryDll/files）+ 文件清单（path/type/size/sha256）
-- **modId**：反向域名（`com.xx.xx`），是内容/消息/资源的命名空间根
-- **通信**：Mod 之间唯一契约是消息（广播/定向/请求应答）
-- **逻辑**：ECS 组织（状态在组件，逻辑在系统），服务端权威
-- **网络**：Mirror 三模式（Host/Dedicated/Relay），自建 Relay 为哑 UDP 转发
-- **分层**：runtime = 基础层（框架）+ 核心 Mod（com.game.core）；游戏 Mod 在 `mods/` 创作空间
+- **一个 Mod = 一个独立能力单元**：自己的代码（Shared/Client/Server 模块）+ 自己的 ECS + 自己的网络协议 + 自己的 UI + 自己的资源 + 自己的对象池
+- **ModObject 是资源边界**：Unload ModObject = 全部资源释放 + Pool 清理 + 注册注销 + 引用解除（§7 卸载管线由 Core 强制执行，不依赖 Mod 自觉）
+- **modId**：反向域名（`com.xx.xx`），是内容/消息/资源/协议/窗口/池的命名空间根
+- **Manifest v2**：`id / version / entry / modules{shared,client,server} / dependencies[{id,version,optional,scope,features}] / network.protocols / files`
+- **网络**：Network.Mod 是唯一出入口（Rule 5）；协议 ID 稳定哈希（Rule 16）；方向由 API 形态强制（禁止 Client→Client）；Relay 为哑转发，云端只做 Session/Discovery
+- **ECS**：World 属于 Runtime，Mod 只注册 Components / Systems（归属 ModObject，卸载移除）
+- **服务端权威**：网络消息是输入，ECS 是权威状态，结果经广播/复制同步回客户端
