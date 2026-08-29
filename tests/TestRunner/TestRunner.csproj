@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <StartupObject>TestRunner.Program</StartupObject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../runtime/src/Game.Mod.Contract/Game.Mod.Contract.csproj" />
+    <ProjectReference Include="../../runtime/src/Game.ECS/Game.ECS.csproj" />
+    <ProjectReference Include="../../runtime/src/Game.Messaging/Game.Messaging.csproj" />
+    <ProjectReference Include="../../runtime/src/Game.ModLoader/Game.ModLoader.csproj" />
+    <Compile Include="../../mods/com.game.protocol/src/**/*.cs" />
+    <Compile Include="../../mods/com.sample.pushbox/src/**/*.cs" Exclude="../../mods/com.sample.pushbox/src/PushBoxView.cs" />
+  </ItemGroup>
+
+</Project>

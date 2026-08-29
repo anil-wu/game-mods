@@ -1,12 +1,13 @@
 using System.IO;
 using Game.ECS;
 using Game.Messaging;
+using Game.ModLoader;
 using UnityEngine;
 
 namespace Game.Runtime
 {
     /// <summary>
-    /// 通用运行时引导（基础层）：装配框架服务，加载 Mods（核心 Mod + 第三方 Mod）。
+    /// 通用运行时引导（基础层）：装配框架服务，加载 Mods，接线网络层。
     /// 运行时不含任何游戏特定逻辑——游戏循环由各 Mod 自带的视图驱动。
     /// </summary>
     public static class ModRuntime
@@ -27,6 +28,15 @@ namespace Game.Runtime
 
             var modsDir = Path.Combine(Application.streamingAssetsPath, "mods");
             Loader.Load(World, Systems, Messages, modsDir);
+
+            // 接线网络层：若存在协议宿主，创建 Mirror 传输并绑定
+            if (Loader.ProtocolHost is { } host)
+            {
+                var go = new GameObject("MirrorNetModule");
+                var net = go.AddComponent<MirrorNetModule>();
+                net.Bind(host);
+            }
+
             Initialized = true;
         }
     }

@@ -96,6 +96,9 @@ bash runtime/build-unity-dlls.sh      # 或 build-unity-dlls.cmd
 # 构建 Mod 源工程 → DLL（拷贝到 runtime/Unity/Assets/StreamingAssets/mods/）
 bash runtime/build-mod.sh
 
+# 运行全部无头测试（核心库 + 协议 Mod + 推箱子逻辑，纯 .NET 无需 Unity）
+bash tests/run.sh
+
 # 中转服务
 dotnet build relay_server/RelayServer.sln
 
@@ -106,10 +109,12 @@ dotnet build mod_server/ModServer.sln
 ### Unity 工程（runtime = 基础层框架 + 核心 Mod）
 
 - 工程位置：`runtime/Unity`，版本 **2022.3.62f3**（用 Unity Hub 打开即可）
+- **Mirror 依赖**：本环境 GitHub HTTPS 不通，Mirror 源码不进仓库，**首次使用先运行 `bash runtime/setup-mirror.sh`**（SSH 浅克隆 + 拷贝到 `Assets/Mirror/`）
 - 框架核心库以 netstandard2.1 DLL 形式放在 `Assets/Plugins/`（纯逻辑，无 Unity API 依赖）
 - `Assets/Scripts/ModRuntime.cs` 是通用运行时引导（装配框架服务 + 加载 Mods），**不含任何游戏特定代码**
 - 核心 Mod（`com.game.core`）与第三方游戏 Mod 都编译成 entryDll 放入 `Assets/StreamingAssets/mods/`，运行时通用加载
 - Mod 可自带 MonoBehaviour 视图（表现层），运行时通用实例化
+- 自动验证（需先关闭 Unity 编辑器）：`bash runtime/verify-unity.sh`（编译检查 + Play 模式冒烟）
 
 ### 运行中转服务
 

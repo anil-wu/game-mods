@@ -25,4 +25,9 @@ mods/**/obj/
 .DS_Store
 Thumbs.db
 
+# --- Mirror 依赖（源码 33MB 过大，用 runtime/setup-mirror.sh 获取，不进仓库） ---
+third_party/
+runtime/Unity/Assets/Mirror/
+runtime/Unity/Assets/Mirror.meta
+
 *.log

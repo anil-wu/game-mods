@@ -26,7 +26,7 @@ namespace Com.Game.Protocol
         }
 
         /// <summary>服务端 Mod 注册协议解析器（编解码器）。</summary>
-        public ushort Register<T>(ModId owner, IMessageCodec<T> codec) where T : struct
+        public uint Register<T>(ModId owner, IMessageCodec<T> codec) where T : struct
             => _core.Register(owner, codec);
 
         /// <summary>上行：客户端二进制 → 解析 → 分发给对应服务端 Mod（由网络层调用）。</summary>
@@ -46,7 +46,7 @@ namespace Com.Game.Protocol
             => _core.Handle(owner, handler);
 
         /// <summary>查询消息类型对应的 ID（未注册返回 0）。</summary>
-        public ushort IdOf<T>() where T : notnull
+        public uint IdOf<T>() where T : notnull
             => _core.IdOf<T>();
     }
 }

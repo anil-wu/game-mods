@@ -18,6 +18,9 @@ namespace Game.Runtime
         public readonly List<IMod> LoadedMods = new();
         public readonly List<string> Errors = new();
 
+        /// <summary>检测到的协议宿主（协议核心 Mod 实现 IProtocolHost）。</summary>
+        public IProtocolHost? ProtocolHost { get; private set; }
+
         public void Load(World world, SystemGroup systems, MessageBus messages, string modsDir)
         {
             Errors.Clear();
@@ -84,6 +87,9 @@ namespace Game.Runtime
             var ctx = new ModContextImpl(pkg.Manifest, world, systems, messages);
             mod.OnLoad(ctx);
             LoadedMods.Add(mod);
+
+            if (mod is IProtocolHost host)
+                ProtocolHost = host;
 
             // 实例化 Mod 自带的视图（MonoBehaviour）——通用机制，运行时无需感知具体 Mod
             InstantiateViews(asm);

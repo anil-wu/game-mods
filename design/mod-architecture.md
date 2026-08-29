@@ -1041,7 +1041,7 @@ void OnServerBatch(NetworkConnectionToClient conn, ModMsgBatch batch)
 | ③ | 接受游戏 Mod 服务端消息 → 序列化 → 二进制 → 客户端（单发/广播） | `Server.Send` + `SendToAll`/`SendToOne` |
 | ④ | 接受服务端二进制 → 按客户端注册表找解析器 → 解析 → 分发对应客户端 Mod | `Client.Receive` |
 
-**要点**：客户端与服务端各自维护独立解析器注册表；`SendToServer` / `SendToAll` / `SendToOne` 是网络钩子（待 Mirror 接入注入）；协议 Mod 只做二进制 ↔ 消息的传输与路由，不含任何游戏逻辑。
+**要点**：客户端与服务端各自维护独立解析器注册表；msgId 由消息类型全名做 FNV-1a 哈希**确定性生成**（两端天然一致，无需握手同步）；`SendToServer` / `SendToAll` / `SendToOne` 是网络钩子（由框架 Mirror 网络层注入）；协议 Mod 只做二进制 ↔ 消息的传输与路由，不含任何游戏逻辑。
 
 ## 10.6 握手流程
 

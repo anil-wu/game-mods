@@ -28,7 +28,10 @@ namespace Game.ECS
 
         public IEnumerable<(uint Entity, T Component)> All()
         {
-            foreach (var kv in _data)
+            // 快照迭代：允许系统在查询期间写回组件（如 WinCheckSystem 写回 Session），
+            // 避免 Mono 下“集合被修改导致枚举异常”。
+            var snapshot = new List<KeyValuePair<uint, T>>(_data);
+            foreach (var kv in snapshot)
                 yield return (kv.Key, kv.Value);
         }
 
@@ -45,7 +48,8 @@ namespace Game.ECS
 
         public IEnumerable<(uint Entity, object Component)> RawAll()
         {
-            foreach (var kv in _data)
+            var snapshot = new List<KeyValuePair<uint, T>>(_data);
+            foreach (var kv in snapshot)
                 yield return (kv.Key, kv.Value);
         }
 
