@@ -41,6 +41,8 @@ namespace Game.Runtime
 
         private void OnDestroy()
         {
+            // Play 模式退出时 GameObject 销毁——同时关停网络，避免下次 Play 端口占用
+            Stop();
             NetworkServer.UnregisterHandler<ModProtocolMsg>();
             NetworkClient.UnregisterHandler<ModProtocolMsg>();
         }

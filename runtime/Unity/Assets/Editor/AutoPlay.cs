@@ -10,16 +10,20 @@ namespace Game.Runtime.Editor
     ///
     /// [InitializeOnLoad]：进入 Play 模式触发域重载，静态事件订阅会丢失——
     /// 域重载后 Unity 重新执行静态构造函数完成重新订阅。
+    ///
+    /// 安全围栏（硬规则）：冒烟逻辑必须同时满足两个条件才生效——
+    ///   1. 批处理模式（Application.isBatchMode）：编辑器 GUI 里手动 Play 绝不触发 Exit；
+    ///   2. SessionState 武装标记（由 -executeMethod Run() 设置，跨域重载存活）。
     /// </summary>
     [InitializeOnLoad]
     public static class AutoPlay
     {
         private const int FramesToRun = 30;
         private const int WatchdogTicks = 5000;
+        private const string ArmedKey = "Game.Runtime.AutoPlay.Armed";
 
         private static int _frames;
         private static int _watchdog;
-        private static bool _armed;   // 由 Run() 武装（仅 batchmode 入口）；域重载后由 EnteredPlayMode 接续
         private static bool _entered;
 
         static AutoPlay()
@@ -28,26 +32,30 @@ namespace Game.Runtime.Editor
             EditorApplication.update += Watchdog;
         }
 
+        /// <summary>仅由 batchmode -executeMethod 调用：武装冒烟测试并进入 Play。</summary>
         public static void Run()
         {
-            _armed = true;
+            SessionState.SetBool(ArmedKey, true);
             _entered = false;
             _frames = 0;
             _watchdog = 0;
             EditorApplication.EnterPlaymode();
         }
 
+        /// <summary>双重围栏：批处理模式 + 显式武装标记，缺一不可。</summary>
+        private static bool Armed =>
+            Application.isBatchMode && SessionState.GetBool(ArmedKey, false);
+
         private static void Watchdog()
         {
-            if (!_armed || _entered) return;
+            if (!Armed || _entered) return;
             if (++_watchdog > WatchdogTicks)
                 Finish(false, "超时未进入 Play 模式");
         }
 
         private static void OnPlayModeState(PlayModeStateChange state)
         {
-            if (state != PlayModeStateChange.EnteredPlayMode) return;
-            // 域重载后 _armed 已被重置——能进入 Play 只有 Run() 触发这一条路，直接接续
+            if (state != PlayModeStateChange.EnteredPlayMode || !Armed) return;
             _entered = true;
             _frames = 0;
             EditorApplication.update += OnUpdate;
@@ -63,7 +71,7 @@ namespace Game.Runtime.Editor
 
         private static void Finish(bool ok, string detail)
         {
-            _armed = false;
+            SessionState.SetBool(ArmedKey, false);
             EditorApplication.update -= OnUpdate;
             Debug.Log(ok
                 ? $"[AutoPlay] OK: 已加载 {detail}"
