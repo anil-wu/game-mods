@@ -8,6 +8,8 @@ namespace Game.ECS
         void RemoveEntity(uint id);
         int Count { get; }
         bool TryGetRaw(uint entity, out object component);
+        /// <summary>装箱写入（Replication 客户端应用等非泛型路径）。</summary>
+        void SetRaw(uint entity, object component);
         IEnumerable<(uint Entity, object Component)> RawAll();
     }
 
@@ -45,6 +47,8 @@ namespace Game.ECS
             component = null!;
             return false;
         }
+
+        public void SetRaw(uint entity, object component) => _data[entity] = (T)component;
 
         public IEnumerable<(uint Entity, object Component)> RawAll()
         {

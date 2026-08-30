@@ -32,6 +32,9 @@ namespace Com.Game.Network
         public NetworkRole Role { get; private set; }
         public bool IsActive { get; private set; }
 
+        /// <summary>ECS Replication 运行时（由 NetworkMod 装配，§11.10）。</summary>
+        public ReplicationRuntime? Replication { get; set; }
+
         /// <summary>未接入传输时的回退（Host 本地 Loopback 由平台/测试装配）。</summary>
         public INetworkTransport? Transport => _transport;
 
@@ -105,6 +108,38 @@ namespace Com.Game.Network
             foreach (var (id, entry) in _protocols)
                 if (entry.Owner == owner) stale.Add(id);
             foreach (var id in stale) _protocols.Remove(id);
+            Replication?.UnregisterAll(owner); // 复制注册与副本实体一并清理（§11.10）
+        }
+
+        // ---- ECS Replication（§11.10，委托 ReplicationRuntime） ----
+
+        public void RegisterArchetype(ModId owner, ArchetypeId id, IComponentCodec[] codecs)
+        {
+            if (Replication is null) throw new NetworkException("Replication 未装配");
+            Replication.RegisterArchetype(owner, id, codecs);
+        }
+
+        public uint SpawnReplicated(ModId owner, global::Game.ECS.Entity entity, ArchetypeId id)
+        {
+            if (Replication is null) throw new NetworkException("Replication 未装配");
+            return Replication.SpawnReplicated(owner, entity, id);
+        }
+
+        public void DespawnReplicated(ModId owner, global::Game.ECS.Entity entity)
+        {
+            Replication?.DespawnReplicated(owner, entity);
+        }
+
+        public bool TryGetEntity(uint networkId, out global::Game.ECS.Entity entity)
+        {
+            entity = default;
+            return Replication is not null && Replication.TryGetEntity(networkId, out entity);
+        }
+
+        public bool TryGetNetworkId(global::Game.ECS.Entity entity, out uint networkId)
+        {
+            networkId = 0;
+            return Replication is not null && Replication.TryGetNetworkId(entity, out networkId);
         }
 
         public bool IsRegistered(ProtocolId id) => _protocols.ContainsKey(id);

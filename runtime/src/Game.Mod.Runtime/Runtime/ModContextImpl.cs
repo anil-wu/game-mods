@@ -178,6 +178,7 @@ namespace Game.Mod.Runtime
         public NetworkContextFacade(ModContextImpl ctx, ModId owner, ServiceRegistry services)
         {
             _ctx = ctx; _owner = owner; _services = services;
+            Replication = new ReplicationContextFacade(ctx, owner, services);
         }
 
         private INetworkRuntime Runtime
@@ -194,6 +195,8 @@ namespace Game.Mod.Runtime
         public bool IsActive =>
             _services.TryGet(WellKnownServices.NetworkRuntime, out var svc) && ((INetworkRuntime)svc).IsActive;
 
+        public IReplicationContext Replication { get; }
+
         public void RegisterProtocol(INetworkProtocol protocol, INetworkHandler? handler) =>
             Runtime.RegisterProtocol(_owner, protocol, handler);
 
@@ -209,6 +212,45 @@ namespace Game.Mod.Runtime
         public void Start(NetworkConfig config) => Runtime.Start(config);
 
         public void Stop() => Runtime.Stop();
+    }
+
+    /// <summary>Replication 门面：绑定 owner 后路由到 Network.Mod 的复制运行时（§11.10）。</summary>
+    internal sealed class ReplicationContextFacade : IReplicationContext
+    {
+        private readonly ModContextImpl _ctx;
+        private readonly ModId _owner;
+        private readonly ServiceRegistry _services;
+
+        public ReplicationContextFacade(ModContextImpl ctx, ModId owner, ServiceRegistry services)
+        {
+            _ctx = ctx; _owner = owner; _services = services;
+        }
+
+        private INetworkRuntime Runtime
+        {
+            get
+            {
+                _ctx.ThrowIfInvalid();
+                if (_services.TryGet(WellKnownServices.NetworkRuntime, out var svc))
+                    return (INetworkRuntime)svc;
+                throw new NoServiceException(WellKnownServices.NetworkRuntime);
+            }
+        }
+
+        public void RegisterArchetype(ArchetypeId id, IComponentCodec[] codecs) =>
+            Runtime.RegisterArchetype(_owner, id, codecs);
+
+        public uint SpawnReplicated(Game.ECS.Entity entity, ArchetypeId id) =>
+            Runtime.SpawnReplicated(_owner, entity, id);
+
+        public void DespawnReplicated(Game.ECS.Entity entity) =>
+            Runtime.DespawnReplicated(_owner, entity);
+
+        public bool TryGetEntity(uint networkId, out Game.ECS.Entity entity) =>
+            Runtime.TryGetEntity(networkId, out entity);
+
+        public bool TryGetNetworkId(Game.ECS.Entity entity, out uint networkId) =>
+            Runtime.TryGetNetworkId(entity, out networkId);
     }
 
     internal sealed class UiContextFacade : IUiContext

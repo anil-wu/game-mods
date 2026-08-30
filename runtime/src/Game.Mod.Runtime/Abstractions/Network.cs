@@ -66,6 +66,9 @@ namespace Game.Mod.Runtime
     {
         bool IsActive { get; }
 
+        /// <summary>ECS Replication 能力（§11.10：高频状态走复制管线，不走协议消息）。</summary>
+        IReplicationContext Replication { get; }
+
         /// <summary>注册协议（owner = 当前 Mod；生命周期与 Mod 严格一致，§11.6）。</summary>
         void RegisterProtocol(INetworkProtocol protocol, INetworkHandler? handler);
 
@@ -134,6 +137,23 @@ namespace Game.Mod.Runtime
 
         /// <summary>按 OwnerMod 一次性清理（§11.6 协议生命周期与 Mod 严格一致）。</summary>
         void UnregisterAll(ModId owner);
+
+        // ---- ECS Replication（§11.10） ----
+
+        /// <summary>注册复制原型（owner = 声明 Mod）。</summary>
+        void RegisterArchetype(ModId owner, ArchetypeId id, IComponentCodec[] codecs);
+
+        /// <summary>Server：实体纳入复制，返回分配的 NetworkId。</summary>
+        uint SpawnReplicated(ModId owner, Game.ECS.Entity entity, ArchetypeId id);
+
+        /// <summary>Server：停止复制并广播 Despawn。</summary>
+        void DespawnReplicated(ModId owner, Game.ECS.Entity entity);
+
+        /// <summary>Client：NetworkId → 本地实体。</summary>
+        bool TryGetEntity(uint networkId, out Game.ECS.Entity entity);
+
+        /// <summary>Client：本地实体 → NetworkId。</summary>
+        bool TryGetNetworkId(Game.ECS.Entity entity, out uint networkId);
 
         void SendToServer(ModId sender, ProtocolId id, object message);
         void SendToClient(ModId sender, int connectionId, ProtocolId id, object message);

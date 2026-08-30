@@ -80,6 +80,28 @@ namespace Game.ECS
         public IComponentStore? TryGetStore(Type componentType)
             => _stores.TryGetValue(componentType, out var s) ? s : null;
 
+        /// <summary>非泛型装箱读取组件（Replication 快照采集，§11.10）。</summary>
+        public bool TryGetRaw(Entity entity, Type componentType, out object component)
+        {
+            component = null!;
+            return _stores.TryGetValue(componentType, out var s) && s.TryGetRaw(entity.Id, out component);
+        }
+
+        /// <summary>非泛型装箱写入组件（Replication 客户端应用，§11.10）。</summary>
+        public void SetRaw(Entity entity, Type componentType, object component)
+        {
+            if (!_entities.Contains(entity.Id))
+                throw new ArgumentException($"实体不存在: {entity}");
+            if (_stores.TryGetValue(componentType, out var s))
+            {
+                s.SetRaw(entity.Id, component);
+                return;
+            }
+            // 存储不存在：经注册路径创建（客户端可能先于本地注册收到复制数据）
+            RegisterComponent(componentType);
+            _stores[componentType].SetRaw(entity.Id, component);
+        }
+
         public void Add<T>(Entity entity, in T component) where T : struct, IComponent
         {
             EnsureExists(entity);

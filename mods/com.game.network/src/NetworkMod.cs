@@ -1,3 +1,5 @@
+using Game.ECS;
+using Game.Mod.Contract;
 using Game.Mod.Runtime;
 
 namespace Com.Game.Network
@@ -9,6 +11,8 @@ namespace Com.Game.Network
     /// </summary>
     public sealed class NetworkMod : IMod
     {
+        public static readonly ModId ModIdValue = new("com.game.network");
+
         public static NetworkRuntimeImpl? Current { get; private set; }
 
         public void Register(IModContext context)
@@ -16,8 +20,21 @@ namespace Com.Game.Network
             var runtime = new NetworkRuntimeImpl();
             Current = runtime;
 
+            // ECS Replication（§11.10）：复制运行时 + 基础设施协议 + 快照泵
+            var replication = new ReplicationRuntime(context.Ecs.World, runtime);
+            runtime.Replication = replication;
+
             // 框架 Mod 经周知 ServiceId 发布基础设施实现（§10.2），context.Network 即路由到此
             context.Services.Register(WellKnownServices.NetworkRuntime, runtime);
+
+            context.Network.RegisterProtocol(
+                new ReplicationProtocol(ReplicationRuntime.ReplicateProtocolPath),
+                new ReplicationFrameHandler(replication, despawn: false));
+            context.Network.RegisterProtocol(
+                new ReplicationProtocol(ReplicationRuntime.DespawnProtocolPath),
+                new ReplicationFrameHandler(replication, despawn: true));
+            if (context.HasServer)
+                context.Ecs.RegisterSystem(new SnapshotSystem(replication), SystemSide.Server);
 
             context.Log.Info($"Network.Mod '{context.Info.Id}' v{context.Info.Version} 已注册（Role×Path 正交，Rule 15）");
         }
