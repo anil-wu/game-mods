@@ -1,0 +1,119 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!1 &3863060069754316774
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 3863060069754316698}
+  - component: {fileID: 6001169850591773642}
+  - component: {fileID: 3863060069754316772}
+  m_Layer: 0
+  m_Name: Network Manager
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &3863060069754316698
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3863060069754316774}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &6001169850591773642
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3863060069754316774}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 95d376cb372feab4dbf97818dd68f7d8, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  dontDestroyOnLoad: 1
+  runInBackground: 1
+  autoStartServerBuild: 1
+  autoConnectClientBuild: 0
+  sendRate: 30
+  offlineScene: Assets/Scenes/Main Menu.unity
+  onlineScene: Assets/Scenes/Gameplay.unity
+  transport: {fileID: 3863060069754316772}
+  networkAddress: localhost
+  maxConnections: 100
+  authenticator: {fileID: 0}
+  playerPrefab: {fileID: 8616685848737228372, guid: c5efc39a8aaf6e64ea40e9ad573e9b47, type: 3}
+  autoCreatePlayer: 1
+  playerSpawnMethod: 0
+  spawnPrefabs:
+  - {fileID: 8973200446373226253, guid: a5b6897dcde07714c872a70f86eee305, type: 3}
+  - {fileID: 8419402963214341890, guid: 1b9f12ea86828824890dc9fad7756358, type: 3}
+  - {fileID: 6919559175900266252, guid: 05376fe08a083ac4c9570e9f84bbbb5e, type: 3}
+  - {fileID: 6919559175900266252, guid: 19943d97c1ffdb649bd004f7f7b6ac32, type: 3}
+  - {fileID: 5986618991811701523, guid: 088d4bc220327fd40b82e16343cb46d5, type: 3}
+  - {fileID: 143558739867442044, guid: 042ceddc02dc85c4db88c063c2214529, type: 3}
+  - {fileID: 143558739867442044, guid: 6a52403c12603424b944c6af8c92e19d, type: 3}
+  - {fileID: 4726437905770876371, guid: d26e9abbf6099804d8c329509bc14e2f, type: 3}
+  - {fileID: 4726437905770876371, guid: f419f648c600bb140a1ccbc3925e7e1d, type: 3}
+  - {fileID: 4726437905770876371, guid: d645c7128319ad8409e225ddd508fb5d, type: 3}
+  - {fileID: 4726437905770876371, guid: 4c30120d51f383441b017cde43b311c4, type: 3}
+  - {fileID: 3377064176178791969, guid: 0e9e7da358e77884c98bffb93c0bb965, type: 3}
+  - {fileID: 788805738652152201, guid: 590bf541e58430e4db6a47c8f8301eb4, type: 3}
+  - {fileID: 3377064176178791969, guid: ab728314c9f794149ac899d312f730e3, type: 3}
+  - {fileID: 788805738652152201, guid: 9ce920298168dec48b1301ff06b6cf40, type: 3}
+  - {fileID: 3377064176178791969, guid: 2f7d36fd6db367b4ca0048888205b2e0, type: 3}
+  - {fileID: 788805738652152201, guid: 99cf34fdc916f5b4f98fd9af1c331225, type: 3}
+  snapshotSettings:
+    bufferTimeMultiplier: 2
+    catchupNegativeThreshold: -1
+    catchupPositiveThreshold: 1
+    catchupSpeed: 0.019999999552965164
+    slowdownSpeed: 0.03999999910593033
+    driftEmaDuration: 1
+    dynamicAdjustment: 1
+    dynamicAdjustmentTolerance: 1
+    deliveryTimeEmaDuration: 2
+  timeInterpolationGui: 0
+--- !u!114 &3863060069754316772
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3863060069754316774}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6b0fecffa3f624585964b0d0eb21b18e, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  port: 7777
+  DualMode: 1
+  NoDelay: 1
+  Interval: 10
+  Timeout: 10000
+  RecvBufferSize: 7361536
+  SendBufferSize: 7361536
+  FastResend: 2
+  ReceiveWindowSize: 4096
+  SendWindowSize: 4096
+  MaxRetransmit: 40
+  MaximizeSocketBuffers: 1
+  ReliableMaxMessageSize: 297433
+  UnreliableMaxMessageSize: 1195
+  debugLog: 0
+  statisticsGUI: 0
+  statisticsLog: 0
