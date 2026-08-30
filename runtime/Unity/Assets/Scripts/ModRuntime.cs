@@ -61,9 +61,19 @@ namespace Game.Runtime
         }
     }
 
-    /// <summary>主循环驱动器：ModRuntimeHost.Tick（消息配额相位 + ECS 系统）。</summary>
+    /// <summary>主循环驱动器：ModRuntimeHost.Tick（消息配额相位 + ECS 系统）。
+    /// 退出游戏 / 停止 Play 时：按加载镜像销毁全部 Mod（主 Mod pinned 除外，§10.4）。</summary>
     public sealed class ModRuntimeDriver : MonoBehaviour
     {
         private void Update() => ModRuntime.Host.Tick(Time.deltaTime);
+
+        private void OnApplicationQuit() => ModRuntime.Host.Shutdown();
+
+        private void OnDestroy()
+        {
+            // 编辑器停止 Play 也会销毁本对象——同样走镜像销毁（重复调用安全）
+            if (ModRuntime.Initialized)
+                ModRuntime.Host.Shutdown();
+        }
     }
 }

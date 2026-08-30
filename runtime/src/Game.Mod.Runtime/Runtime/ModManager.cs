@@ -36,6 +36,7 @@ namespace Game.Mod.Runtime
     public sealed class ModManager
     {
         private readonly Dictionary<ModId, ModObject> _loaded = new();
+        private readonly List<ModId> _loadOrder = new(); // 真实加载顺序（依赖在前），UnloadAll 取其镜像
         private readonly Dictionary<CapabilityId, (ModId Owner, Delegate Handler)> _capabilities = new();
         private readonly List<ModCallTraceEntry> _callTrace = new(256);
         private int _callTraceHead;
@@ -198,6 +199,10 @@ namespace Game.Mod.Runtime
             if (!_loaded.TryGetValue(id, out var mod))
                 throw new NoModException(id);
 
+            // 主 Mod 禁止销毁（§10.4：随进程生命周期存活）
+            if (mod.Info.Manifest.Pinned)
+                throw new ModStateException($"主 Mod '{id}' 禁止销毁（pinned，§10.4）");
+
             // 卸载仍被依赖的 Mod 属于生命周期错误（Rule 7：注销顺序与注册相反）
             foreach (var other in _loaded.Values)
             {
@@ -255,8 +260,40 @@ namespace Game.Mod.Runtime
 
             mod.State = ModObjectState.Unloaded;
             _loaded.Remove(modId);
+            _loadOrder.Remove(modId);
             ModUnloaded?.Invoke(modId);
             _log.Info($"[ModManager] 已卸载 {mod.Info}");
+        }
+
+        /// <summary>
+        /// 全部卸载（退出游戏）：按加载顺序的镜像销毁——
+        /// 依赖方先卸、被依赖方后卸（加载时依赖在前由拓扑保证，镜像即合法注销顺序，§12.3）。
+        /// 尽力而为：单个失败记录错误并继续，保证整体关闭不中断。
+        /// </summary>
+        public List<string> UnloadAll()
+        {
+            var errors = new List<string>();
+            var mirror = _loadOrder.ToArray();
+            for (var i = mirror.Length - 1; i >= 0; i--)
+            {
+                var id = mirror[i];
+                if (!_loaded.ContainsKey(id)) continue;
+                if (_loaded[id].Info.Manifest.Pinned)
+                {
+                    _log.Info($"[ModManager] 主 Mod '{id}' 跳过销毁（pinned）");
+                    continue; // 主 Mod 不被销毁，随进程生命周期存活
+                }
+                try
+                {
+                    Unload(id);
+                }
+                catch (Exception e)
+                {
+                    errors.Add($"卸载 {id} 失败: {e.Message}");
+                    _log.Error($"[ModManager] {errors[^1]}");
+                }
+            }
+            return errors;
         }
 
         // ---- ModCall（§12.11） ----
@@ -367,6 +404,7 @@ namespace Game.Mod.Runtime
             // IMod.Register：向 Game Runtime 声明并注册自己提供的能力（§3）
             instance.Register(context);
             mod.State = ModObjectState.Running;
+            _loadOrder.Add(manifest.ModId);
 
             _log.Info($"[ModManager] 已加载 {info}");
             ModLoaded?.Invoke(mod);

@@ -27,6 +27,10 @@ namespace Game.Mod.Contract
         /// <summary>Server 模块程序集（仅 HasServer 环境加载），可空。</summary>
         public string? ServerModule { get; set; }
 
+        /// <summary>主 Mod 标记（§10.4 框架 Mod 规则）：pinned 的 Mod 禁止销毁——
+        /// Unload 直接拒绝，退出游戏 UnloadAll 时跳过（随进程生命周期存活）。</summary>
+        public bool Pinned { get; set; }
+
         public List<ModDependency> Dependencies { get; set; } = new();
 
         /// <summary>协议声明清单（供协商与查重，§15.4）。</summary>
@@ -65,6 +69,9 @@ namespace Game.Mod.Contract
                         break;
                     case "entry":
                         m.Entry = kv.Value.AsString;
+                        break;
+                    case "pinned":
+                        m.Pinned = kv.Value.AsBool;
                         break;
                     case "entryDll": // v1 兼容 → shared 模块
                         m.SharedModule = kv.Value.AsString;
@@ -129,6 +136,8 @@ namespace Game.Mod.Contract
 
             if (!string.IsNullOrEmpty(Entry))
                 root["entry"] = JsonValue.Of(Entry);
+            if (Pinned)
+                root["pinned"] = JsonValue.Of(true);
 
             var modules = new Dictionary<string, JsonValue> { ["shared"] = JsonValue.Of(SharedModule) };
             if (ClientModule is { } cm) modules["client"] = JsonValue.Of(cm);

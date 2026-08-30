@@ -259,6 +259,7 @@ namespace Game.Mod.Runtime
         public ModObject LoadFromDirectory(string modDirectory) => _manager.LoadFromDirectory(modDirectory);
         public ModManifest RegisterDirectory(string modDirectory) => _manager.RegisterDirectory(modDirectory);
         public void Unload(ModId id) => _manager.Unload(id);
+        public System.Collections.Generic.List<string> UnloadAll() => _manager.UnloadAll();
 
         public void Export(CapabilityId id, Delegate handler)
         {

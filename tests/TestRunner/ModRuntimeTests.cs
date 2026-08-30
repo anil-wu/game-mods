@@ -296,6 +296,49 @@ namespace TestRunner
             host.Manager.Unload(InventoryMod.Id); // Clear() 由 Core 强制调用
         }
 
+        // ---- 退出游戏：镜像销毁（UnloadAll） ----
+
+        [Test]
+        public static void UnloadAll_MirrorOfDependencyOrder()
+        {
+            var host = Host();
+            host.Load(InventoryManifest(), typeof(InventoryMod).Assembly);
+            host.Load(WeaponManifest(), typeof(WeaponMod).Assembly);
+            host.Load(Manifest("com.test.rogue", typeof(RogueMod).FullName!), typeof(RogueMod).Assembly);
+
+            var unloaded = new List<ModId>();
+            host.Manager.ModUnloaded += id => unloaded.Add(id);
+
+            var errors = host.Manager.UnloadAll();
+
+            Assert.Equal(0, errors.Count);
+            Assert.Equal(3, unloaded.Count);
+            // 依赖方先卸：weapon（依赖 inventory）必须先于 inventory（§12.3 镜像）
+            Assert.True(unloaded.IndexOf(WeaponMod.Id) < unloaded.IndexOf(InventoryMod.Id),
+                $"卸载顺序错误: [{string.Join(", ", unloaded)}]");
+            Assert.Equal(0, host.Manager.Loaded.Count);
+            // 重复调用安全（空跑）
+            Assert.Equal(0, host.Manager.UnloadAll().Count);
+        }
+
+        [Test]
+        public static void PinnedMod_CannotBeDestroyed()
+        {
+            var host = Host();
+            var pinned = InventoryManifest();
+            pinned.Pinned = true; // 主 Mod 标记（§10.4）
+            host.Load(pinned, typeof(InventoryMod).Assembly);
+            host.Load(WeaponManifest(), typeof(WeaponMod).Assembly);
+
+            // 单个卸载主 Mod → 拒绝
+            Assert.Throws<ModStateException>(() => host.Manager.Unload(InventoryMod.Id));
+
+            // 退出游戏：主 Mod 跳过销毁，其余按镜像卸载
+            host.Manager.UnloadAll();
+            Assert.True(host.Manager.IsLoaded(InventoryMod.Id));
+            Assert.True(!host.Manager.IsLoaded(WeaponMod.Id));
+        }
+
         // ---- ECS 归属 ----
 
         [Test]

@@ -4,5 +4,6 @@
   "entry": "Com.Game.Core.CoreMod",
   "modules": {
     "shared": "com.game.core.dll"
-  }
+  },
+  "pinned": true
 }

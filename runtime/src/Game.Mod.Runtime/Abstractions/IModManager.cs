@@ -46,6 +46,11 @@ namespace Game.Mod.Runtime
         /// <summary>热卸载（§7）：业务注销 → CloseAll → 强制退订 → 协议/ECS/UI 注销 → 清池 → 释放资源 → 卸载程序集。</summary>
         void Unload(ModId id);
 
+        /// <summary>全部卸载（退出游戏时调用）：按加载顺序的镜像销毁——依赖方先卸、被依赖方后卸，
+        /// 与注册顺序严格相反（§12.3：注册 Common→Inventory→UI→Weapon，注销 Weapon→UI→Inventory→Common）。
+        /// 返回逐个卸载时的错误列表（尽力而为，不中断整体关闭）。</summary>
+        System.Collections.Generic.List<string> UnloadAll();
+
         /// <summary>当前 Mod 导出能力（id 命名空间必须属于当前 Mod；卸载时随 UnsubscribeAll 一并撤销，§13.5）。</summary>
         void Export(CapabilityId id, System.Delegate handler);
 

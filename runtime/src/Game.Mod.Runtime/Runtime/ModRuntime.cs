@@ -38,6 +38,9 @@ namespace Game.Mod.Runtime
         /// <summary>发现目录并整批加载（返回错误列表，空 = 全部成功）。</summary>
         public List<string> LoadDirectory(string modsDir) => Manager.LoadDirectory(modsDir);
 
+        /// <summary>关闭运行时（退出游戏 / 停止 Play）：按依赖镜像卸载全部 Mod。</summary>
+        public List<string> Shutdown() => Manager.UnloadAll();
+
         /// <summary>从预加载程序集加载 Mod（测试 / 嵌入式路径）。</summary>
         public ModObject Load(ModManifest manifest, Assembly assembly, string? contentRoot = null)
             => Manager.Load(manifest, new[] { assembly }, contentRoot);

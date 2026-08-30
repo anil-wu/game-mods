@@ -4,5 +4,6 @@
   "entry": "Com.Game.Ui.UiMod",
   "modules": {
     "shared": "com.game.ui.dll"
-  }
+  },
+  "pinned": true
 }

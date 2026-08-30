@@ -166,6 +166,23 @@ namespace TestRunner
         }
 
         [Test]
+        public static void Manifest_Pinned_RoundTrip()
+        {
+            // 主 Mod 标记（§10.4）：默认 false，序列化往返保持
+            var m = ModManifest.Parse(@"{ ""id"": ""com.game.core"", ""version"": ""1.0.0"",
+  ""modules"": { ""shared"": ""x.dll"" }, ""pinned"": true }");
+            Assert.True(m.Pinned);
+            var m2 = ModManifest.Parse(m.ToJson());
+            Assert.True(m2.Pinned);
+            Assert.True(m.ToJson().Contains("pinned"));
+
+            var unpinned = ModManifest.Parse(@"{ ""id"": ""com.game.core"", ""version"": ""1.0.0"",
+  ""modules"": { ""shared"": ""x.dll"" } }");
+            Assert.True(!unpinned.Pinned);
+            Assert.True(!unpinned.ToJson().Contains("pinned"));
+        }
+
+        [Test]
         public static void ManifestV1_CompatParse()
         {
             // v1 清单仍可解析（modId / entryDll / dependencies 对象形式）

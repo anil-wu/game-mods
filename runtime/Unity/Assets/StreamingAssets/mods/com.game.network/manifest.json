@@ -4,5 +4,6 @@
   "entry": "Com.Game.Network.NetworkMod",
   "modules": {
     "shared": "com.game.network.dll"
-  }
+  },
+  "pinned": true
 }
