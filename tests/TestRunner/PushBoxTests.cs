@@ -149,6 +149,37 @@ namespace TestRunner
         }
 
         [Test]
+        public static void HostMode_ClientAndServer_ExitSimultaneously()
+        {
+            // Host 模式硬规则：前端（Client）与后端（Server）是同一 ModObject 的两套上下文（Rule 2），
+            // 退出必须以 ModObject 为粒度原子发生——两边注册同帧清零，不留半截状态。
+            var f = Fixture.Create();
+            var world = f.Host.World;
+            f.Push(PlayerSide.Left, true);
+            f.Tick(50);
+
+            // 退出前：双端均在运行
+            var runtime = NetworkMod.Current!;
+            Assert.True(runtime.IsRegistered(ProtocolId.Of("com.sample.pushbox:input")));    // C2S（Client 发出）
+            Assert.True(runtime.IsRegistered(ProtocolId.Of("com.sample.pushbox:game_won"))); // S2C（Server 广播）
+            Assert.True(world.EntityCount > 0);                   // Server 权威实体
+            Assert.True(f.Host.Systems.CountOf(PushBoxId) > 0);   // Server 系统
+
+            f.PushBoxCtx.Mods.Unload(PushBoxId);
+
+            // 后端清零：服务端协议 / 权威系统 / 权威实体
+            Assert.True(!runtime.IsRegistered(ProtocolId.Of("com.sample.pushbox:input")));
+            Assert.True(!runtime.IsRegistered(ProtocolId.Of("com.sample.pushbox:game_won")));
+            Assert.Equal(0, f.Host.Systems.CountOf(PushBoxId));
+            Assert.Equal(0, world.EntityCount);
+            // 前端清零：Client 侧落地状态与订阅（pushbox 自身订阅数；测试探针的订阅属 com.test.runner 不受影响）
+            Assert.True(PushBoxMod.ClientWinner is null);
+            Assert.Equal(0, f.Host.Messages.SubscriptionCount(PushBoxId));
+            // 大厅（pinned 框架 Mod）双端存活
+            Assert.True(runtime.IsActive);
+        }
+
+        [Test]
         public static void Reload_AfterUnload_WorldIsClean()
         {
             // 退出再进入：旧实体必须随卸载销毁，重进后只有一个新 Session（视图/模拟不挂旧实体）

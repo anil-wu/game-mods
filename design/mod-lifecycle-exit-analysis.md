@@ -77,7 +77,21 @@ Unload(Mod)
 
 **顺序原则**：先停"生产者"（系统/Handler/视图），再清"状态"（实体/池/资源），最后失效化（Context/程序集）。
 
-### 3.3 退出语义分层
+### 3.3 Host 模式：前后端必须同时退出（原子粒度）
+
+Client / Server 是**同一 ModObject 的两套上下文**（Rule 2，§6）——退出以 ModObject 为粒度原子发生，
+禁止“退了画面留了模拟”。卸载管线一次覆盖双端持有物：
+
+| 端 | 持有物 | 清理步骤 |
+|---|---|---|
+| Server | 权威系统 / 权威实体 / C2S 协议与 Handler | 步骤 4 / 5 / 5.1 |
+| Client | S2C 协议与 Handler / 本地落地状态（静态桥） / 订阅 / 视图 | 步骤 4 / 1 / 3 / 8 |
+
+验证：`PushBoxTests.HostMode_ClientAndServer_ExitSimultaneously`——退出后双端注册同帧清零，
+大厅（pinned 框架 Mod）双端存活。未来拆 Shared/Client/Server 三模块后，此粒度不变：
+模块裁剪影响“装什么”，不影响“退什么”——ModObject 仍是唯一退出单位。
+
+### 3.4 退出语义分层
 
 | 层级 | 语义 | 入口 | 范围 |
 |---|---|---|---|
@@ -85,7 +99,7 @@ Unload(Mod)
 | 硬退出 | 退出应用 / 停止 Play | `ModRuntimeHost.Shutdown()`（OnApplicationQuit/OnDestroy） | UnloadAll 按加载镜像销毁，pinned 随进程存活 |
 | 异常退出 | Mod 崩溃熔断 | （未实现，见路线 P3） | 单个问题 Mod |
 
-### 3.4 已知妥协（记录在案）
+### 3.5 已知妥协（记录在案）
 
 1. **组件类型注册不可按 Mod 移除**：组件存储是类型键全局结构，实体存活时移除类型不安全。妥协：类型常驻（无状态、无害），实体强制销毁已覆盖实际危害。
 2. **程序集不可卸载（Unity 字节加载）**：以"去重复用 + 静态重入"为当前语义；真卸载待 HybridCLR/ALC。
