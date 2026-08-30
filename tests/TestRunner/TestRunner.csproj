@@ -23,6 +23,9 @@
     <Compile Include="../../samples/MirrorUnityFPS/mods/com.fps.player/src/**/*.cs" Exclude="../../samples/MirrorUnityFPS/mods/com.fps.player/src/PlayerView.cs" />
     <Compile Include="../../samples/MirrorUnityFPS/mods/com.fps.weapon/src/**/*.cs" Exclude="../../samples/MirrorUnityFPS/mods/com.fps.weapon/src/WeaponView.cs" />
     <Compile Include="../../samples/MirrorUnityFPS/mods/com.fps.inventory/src/**/*.cs" Exclude="../../samples/MirrorUnityFPS/mods/com.fps.inventory/src/InventoryView.cs" />
+    <Compile Include="../../samples/MirrorUnityFPS/mods/com.fps.mapgen/src/**/*.cs" Exclude="../../samples/MirrorUnityFPS/mods/com.fps.mapgen/src/MapGenView.cs" />
+    <Compile Include="../../samples/MirrorUnityFPS/mods/com.fps.console/src/**/*.cs" Exclude="../../samples/MirrorUnityFPS/mods/com.fps.console/src/ConsoleView.cs" />
+    <Compile Include="../../samples/MirrorUnityFPS/mods/com.fps.npc/src/**/*.cs" Exclude="../../samples/MirrorUnityFPS/mods/com.fps.npc/src/NpcView.cs" />
   </ItemGroup>
 
 </Project>

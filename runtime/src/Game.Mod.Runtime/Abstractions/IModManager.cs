@@ -59,5 +59,12 @@ namespace Game.Mod.Runtime
         /// 未声明依赖直接拒绝；目标未加载 → NoModException；能力未导出 → NoCapabilityException。
         /// </summary>
         object? Call(ModId target, CapabilityId id, object? args);
+
+        /// <summary>
+        /// 基础设施委托调用：目标 Mod 经注册（如 console:register）授权后的能力调用——
+        /// 豁免依赖校验（"注册即授权"），但仍做 NoMod / NoCapability 校验。
+        /// 仅供 console 等命令路由基础设施使用，业务 Mod 间禁止。
+        /// </summary>
+        object? InvokeRegistered(ModId target, CapabilityId id, object? args);
     }
 }

@@ -323,5 +323,11 @@ namespace Game.Mod.Runtime
             _ctx.ThrowIfInvalid();
             return _manager.Call(_caller, target, id, args);
         }
+
+        public object? InvokeRegistered(ModId target, CapabilityId id, object? args)
+        {
+            _ctx.ThrowIfInvalid();
+            return _manager.InvokeRegistered(_caller, target, id, args);
+        }
     }
 }

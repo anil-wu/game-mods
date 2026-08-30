@@ -378,7 +378,15 @@ namespace Game.Mod.Runtime
                     throw new ModDependencyException(
                         $"Mod '{caller}' 未在 Manifest 声明对 '{target}' 的依赖，能力调用被拒绝（§12.11 规则 1）");
             }
+            return Invoke(caller, target, id, args);
+        }
 
+        /// <summary>基础设施委托调用：豁免依赖校验（"注册即授权"），仍做 NoMod/NoCapability 校验。</summary>
+        internal object? InvokeRegistered(ModId caller, ModId target, CapabilityId id, object? args)
+            => Invoke(caller, target, id, args);
+
+        private object? Invoke(ModId caller, ModId target, CapabilityId id, object? args)
+        {
             // 规则 2：目标未加载 → NoModException；能力未导出 → NoCapabilityException
             if (!_loaded.ContainsKey(target))
                 throw new NoModException(target);

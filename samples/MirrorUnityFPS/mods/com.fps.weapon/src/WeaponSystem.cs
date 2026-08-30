@@ -88,23 +88,27 @@ namespace Com.Fps.Weapon
             var dx = (float)Math.Sin(yawRad);
             var dz = (float)Math.Cos(yawRad);
 
-            // ray-sphere 命中（最近者胜，排除自己）
+            // ray-sphere 命中（最近者胜，排除自己；玩家 + 可选 NPC）
             uint hitEntity = 0;
             var hitApproach = float.MaxValue;
             foreach (var p in players)
             {
                 if (p.EntityId == shooter.Id || !p.Alive) continue;
-                var tx = p.X - ox;
-                var ty = (p.Y + WeaponConfig.ChestHeight) - oy; // 命中球取胸口高度，避免掠射误差
-                var tz = p.Z - oz;
-                var approach = tx * dx + tz * dz; // 水平射线
-                if (approach < 0f || approach > WeaponConfig.Range) continue;
-                var distSq = tx * tx + ty * ty + tz * tz - approach * approach;
-                if (distSq > WeaponConfig.HitRadius * WeaponConfig.HitRadius) continue;
+                var approach = TryHit(p.X, p.Y, p.Z, ox, oy, oz, dx, dz);
                 if (approach < hitApproach)
                 {
                     hitApproach = approach;
                     hitEntity = p.EntityId;
+                }
+            }
+            foreach (var n in GetAllNpcs())
+            {
+                if (!n.Alive) continue;
+                var approach = TryHit(n.X, n.Y, n.Z, ox, oy, oz, dx, dz);
+                if (approach < hitApproach)
+                {
+                    hitApproach = approach;
+                    hitEntity = n.EntityId;
                 }
             }
 
@@ -115,7 +119,9 @@ namespace Com.Fps.Weapon
                 hx = ox + dx * hitApproach;
                 hy = oy;
                 hz = oz + dz * hitApproach;
-                killed = ApplyDamage(hitEntity, WeaponConfig.Damage, shooter.Id);
+                killed = IsNpc(hitEntity)
+                    ? ApplyNpcDamage(hitEntity, WeaponConfig.Damage, shooter.Id)
+                    : ApplyDamage(hitEntity, WeaponConfig.Damage, shooter.Id);
             }
             else
             {
@@ -138,6 +144,18 @@ namespace Com.Fps.Weapon
             writer.WriteBool(3, killed);
             var buffer = writer.ToBuffer();
             _context.Messages.Publish(WeaponMod.ShotFiredEvent, 1, in buffer);
+        }
+
+        /// <summary>ray-sphere：命中返回最近距离，未命中返回 float.MaxValue。</summary>
+        private static float TryHit(float px, float py, float pz, float ox, float oy, float oz, float dx, float dz)
+        {
+            var tx = px - ox;
+            var ty = (py + WeaponConfig.ChestHeight) - oy;
+            var tz = pz - oz;
+            var approach = tx * dx + tz * dz;
+            if (approach < 0f || approach > WeaponConfig.Range) return float.MaxValue;
+            var distSq = tx * tx + ty * ty + tz * tz - approach * approach;
+            return distSq > WeaponConfig.HitRadius * WeaponConfig.HitRadius ? float.MaxValue : approach;
         }
 
         private uint NetIdOf(Entity entity) =>
@@ -172,6 +190,60 @@ namespace Com.Fps.Weapon
                 WeaponMod.PlayerModId, WeaponMod.ApplyDamageCap,
                 new object[] { target, amount, source });
             return result is bool b && b;
+        }
+
+        // ---- 可选 NPC 目标（com.fps.npc 未加载则跳过，§12.4 Optional） ----
+
+        private readonly HashSet<uint> _npcIds = new();
+
+        private NpcSnapshot[] GetAllNpcs()
+        {
+            if (!_context.Mods.IsLoaded(WeaponMod.NpcModId)) return Array.Empty<NpcSnapshot>();
+            var raw = _context.Mods.Call(WeaponMod.NpcModId, WeaponMod.NpcGetAllCap, null) as object[];
+            if (raw is null) return Array.Empty<NpcSnapshot>();
+            _npcIds.Clear();
+            var list = new List<NpcSnapshot>();
+            foreach (var row in raw)
+            {
+                if (!NpcSnapshot.TryRead(row, out var snap)) continue;
+                _npcIds.Add(snap.EntityId);
+                list.Add(snap);
+            }
+            return list.ToArray();
+        }
+
+        private bool IsNpc(uint entityId) => _npcIds.Contains(entityId);
+
+        private bool ApplyNpcDamage(uint target, int amount, uint source)
+        {
+            var result = _context.Mods.Call(
+                WeaponMod.NpcModId, WeaponMod.NpcApplyDamageCap,
+                new object[] { target, amount, source });
+            return result is bool b && b;
+        }
+    }
+
+    /// <summary>NPC 位置快照（按 com.fps.npc CONTRACT.md 自实现解析，Rule 19）。</summary>
+    public readonly struct NpcSnapshot
+    {
+        public readonly uint EntityId;
+        public readonly float X, Y, Z;
+        public readonly bool Alive;
+
+        private NpcSnapshot(uint entityId, float x, float y, float z, bool alive)
+        {
+            EntityId = entityId; X = x; Y = y; Z = z; Alive = alive;
+        }
+
+        /// <summary>行布局：[0]=EntityId [1]=X [2]=Y [3]=Z [4]=Alive。</summary>
+        public static bool TryRead(object? row, out NpcSnapshot snap)
+        {
+            snap = default;
+            if (row is not object[] a || a.Length < 5) return false;
+            if (a[0] is not uint id || a[1] is not float x || a[2] is not float y ||
+                a[3] is not float z || a[4] is not bool alive) return false;
+            snap = new NpcSnapshot(id, x, y, z, alive);
+            return true;
         }
     }
 

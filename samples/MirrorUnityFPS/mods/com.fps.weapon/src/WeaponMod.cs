@@ -19,8 +19,14 @@ namespace Com.Fps.Weapon
         public static readonly CapabilityId GetAllPositionsCap = new(PlayerModId, "get_all_positions");
         public static readonly CapabilityId ApplyDamageCap = new(PlayerModId, "apply_damage");
 
+        /// <summary>对端 NPC 能力（可选依赖；未加载则跳过 NPC 命中）。</summary>
+        public static readonly ModId NpcModId = new("com.fps.npc");
+        public static readonly CapabilityId NpcGetAllCap = new(NpcModId, "get_all_npcs");
+        public static readonly CapabilityId NpcApplyDamageCap = new(NpcModId, "apply_damage");
+
         /// <summary>本 Mod 导出的能力（供拾取/控制台等）。</summary>
         public static readonly CapabilityId AddAmmoCap = new(ModIdValue, "add_ammo");
+        public static readonly CapabilityId CmdGiveAmmoCap = new(ModIdValue, "cmd_give_ammo");
 
         // 静态桥（视图访问，Mod 内部状态）
         public static World World { get; private set; } = null!;
@@ -44,6 +50,16 @@ namespace Com.Fps.Weapon
             context.Ecs.RegisterComponent(typeof(FireIntent));
 
             context.Mods.Export(AddAmmoCap, new AddAmmoHandler(AddAmmo));
+            context.Mods.Export(CmdGiveAmmoCap, new AddAmmoHandler(_ =>
+                AddAmmo(new object[] { GetLocalShooterEntityId(context), 15 })));
+
+            // 控制台命令注册（可选依赖；经 console:register 能力，零跨 Mod 类型引用）
+            var consoleId = new ModId("com.fps.console");
+            if (context.Mods.IsLoaded(consoleId))
+            {
+                context.Mods.Call(consoleId, new CapabilityId(consoleId, "register"),
+                    new object[] { "give_ammo", ModIdValue.Value, CmdGiveAmmoCap.Id.ToString() });
+            }
 
             if (context.HasServer)
             {

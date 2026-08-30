@@ -13,8 +13,8 @@
 | 2 | **com.fps.weapon**：射击（冷却/弹药）+ 换弹 + 命中判定（服务端 ray-sphere）+ 伤害经 ModCall | ✅ |
 | 3 | Unity 表现层（代码原语：胶囊体/平面/第一人称相机/弹道线/准星，零美术资源） | ✅ |
 | 4 | 文档 + 验收（无头 e2e + Unity 冒烟） | ✅ |
-| 5 | 背包/拾取（com.fps.inventory）+ HUD 正式窗口 | ⏳ 后续 |
-| 6 | 程序化地图（seed 同步）+ 控制台命令 + NPC 行为树 | ⏳ 后续 |
+| 5 | 背包/拾取（com.fps.inventory）+ 伤害反馈 | ✅（拖拽背包 UI 待 UGUI） |
+| 6 | 程序化地图（seed）+ 控制台命令 + NPC 行为树 | ✅ |
 
 ## 对标清单（机制 ↔ 实现）
 
@@ -25,9 +25,9 @@
 | 简单武器（Shot/Reload/Hold to fire） | weapon:fire / weapon:reload 协议 + 服务端冷却/弹药/命中 | ✅（无动画/特效资源，弹道线为代码原语） |
 | 简单生命 + 受击信息 | Health 组件 + `player:apply_damage` ModCall + 死亡/重生 + 复制 | ✅ |
 | 伤害飘字 | 未做（UI.Mod 未接 UGUI，HUD 为 OnGUI 占位） | ⏳ |
-| 背包/拾取/拖拽 UI | 未做（阶段 5） | ⏳ |
-| 程序化地图（seed） | 未做（阶段 6） | ⏳ |
-| 控制台命令 | 未做（阶段 6） | ⏳ |
+| 背包/拾取 | E 拾取即时生效（治疗/补弹）；拖拽 UI 待 UGUI | ✅（部分） |
+| 程序化地图（seed） | seed 同步 + 确定性生成（障碍物视觉层） | ✅ |
+| 控制台命令 | 命令注册表 + 文本分发 + InvokeRegistered 委托调用 | ✅ |
 | NetworkManager/HUD | ModRuntime 引导 + Host 自动启动（§11.3） | ✅ |
 | PoolManager | ModObject PoolScope（本 MVP 未用到池） | — |
 | SyncVar（生命/弹药） | ECS Replication（Archetype + Snapshot） | ✅ |

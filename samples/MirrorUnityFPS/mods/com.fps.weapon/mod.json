@@ -8,7 +8,9 @@
   "dependencies": [
     { "id": "com.game.core", "version": ">=1.0.0" },
     { "id": "com.game.network", "version": ">=1.0.0" },
-    { "id": "com.fps.player", "version": ">=0.1.0" }
+    { "id": "com.fps.player", "version": ">=0.1.0" },
+    { "id": "com.fps.console", "version": ">=0.1.0", "optional": true },
+    { "id": "com.fps.npc", "version": ">=0.1.0", "optional": true }
   ],
   "network": {
     "protocols": [
