@@ -45,7 +45,7 @@ namespace Game.Runtime
         /// （如 "Sci-fi_character_unity_blue Variant.prefab" → "…blue"），
         /// 精确名匹配失败时用双向前缀模糊匹配（兼容截断/大小写/空格差异）。
         /// </summary>
-        private static object? LoadByStem(AssetBundle bundle, string localPath)
+        private static UnityEngine.Object? LoadByStem(AssetBundle bundle, string localPath)
         {
             var stem = Path.GetFileNameWithoutExtension(localPath).ToLowerInvariant();
             foreach (var n in bundle.GetAllAssetNames())
