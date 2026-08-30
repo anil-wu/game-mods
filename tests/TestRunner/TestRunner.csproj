@@ -9,6 +9,8 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- 构建但不引用：合成插件 DLL 供 ModStoreTests 经假服务器分发后动态加载 -->
+    <ProjectReference Include="../TestPlugin/TestPlugin.csproj" ReferenceOutputAssembly="false" />
     <ProjectReference Include="../../runtime/src/Game.Mod.Contract/Game.Mod.Contract.csproj" />
     <ProjectReference Include="../../runtime/src/Game.ECS/Game.ECS.csproj" />
     <ProjectReference Include="../../runtime/src/Game.Messaging/Game.Messaging.csproj" />

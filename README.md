@@ -184,11 +184,19 @@ MOD_PACKAGES_DIR=./packages dotnet run
 运行时内呈现 mod_server 上的 Mod 列表 → 按依赖闭包下载安装到本地 mods 目录 → 动态启动：
 
 ```bash
-# 1. 启动 mod_server 并上传一些 .mod 包（见上两节）
-# 2. Unity Play：右上角商店面板 → 刷新列表 → 安装并启动
-#    （下载目录: persistentDataPath/mods；服务器地址可用环境变量 MOD_SERVER_URL 预设）
+# 1. 启动 mod_server（固定 5000 端口，与商店默认地址一致）
+cd mod_server/src/ModServer
+MOD_PACKAGES_DIR=../../dist/server_packages ASPNETCORE_URLS=http://127.0.0.1:5000 dotnet run -c Release --no-launch-profile
+
+# 2. 打包并上传 Mod
+python runtime/pack-mod.py
+curl -F "file=@dist/packages/com.sample.hello-0.1.0.mod" http://127.0.0.1:5000/api/mods
+
+# 3. Unity Play：右上角商店面板 → 刷新列表 → 安装并启动
 ```
 
+- **演示设计**：`com.sample.hello` 不在本地启动集（仅从商店分发）——点击"安装并启动"后可观察
+  下载 → 安装（`persistentDataPath/mods/com.sample.hello/`）→ 动态加载（Console 日志 + 系统注册）的完整 UGC 闭环
 - 能力导出（ModCall）：`modstore:list` / `modstore:install_and_start`，其他 Mod 可直接调用
 - 契约与行为约定见 `mods/com.game.modstore/CONTRACT.md`
 - 会话限制：联网会话中不要启动注册了新协议的 Mod（§11.14）

@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <LangVersion>9.0</LangVersion>
+    <Nullable>enable</Nullable>
+    <AssemblyName>com.test.plugin</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../runtime/src/Game.Mod.Contract/Game.Mod.Contract.csproj" Private="false" />
+    <ProjectReference Include="../../runtime/src/Game.ECS/Game.ECS.csproj" Private="false" />
+    <ProjectReference Include="../../runtime/src/Game.Messaging/Game.Messaging.csproj" Private="false" />
+    <ProjectReference Include="../../runtime/src/Game.Mod.Runtime/Game.Mod.Runtime.csproj" Private="false" />
+  </ItemGroup>
+
+</Project>

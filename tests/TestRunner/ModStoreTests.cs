@@ -6,7 +6,6 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using System.Threading;
-using Com.Game.Core;
 using Com.Game.ModStore;
 using Game.Mod.Contract;
 using Game.Mod.Runtime;
@@ -127,21 +126,28 @@ namespace TestRunner
 
         // ---- 辅助 ----
 
-        /// <summary>用仓库内已构建的 hello DLL 制作 .mod 包（zip）。</summary>
-        private static byte[] BuildHelloPackage()
-        {
-            var modDir = Path.Combine(RepoPaths.Root, "runtime", "Unity", "Assets", "StreamingAssets", "mods", "com.sample.hello");
-            var dllPath = Path.Combine(modDir, "com.sample.hello.dll");
-            Assert.True(File.Exists(dllPath), $"hello DLL 不存在（先运行 build-mod.py）: {dllPath}");
+        private static readonly ModId PluginId = new("com.test.plugin");
 
-            var manifest = ModManifest.Parse(RepoPaths.ModJson("com.sample.hello"));
+        /// <summary>用合成插件 DLL（TestPlugin 工程产物）制作 .mod 包（zip）。</summary>
+        private static byte[] BuildPluginPackage()
+        {
+            var dllPath = Path.Combine(RepoPaths.Root, "tests", "TestPlugin", "bin", "Release", "netstandard2.1", "com.test.plugin.dll");
+            Assert.True(File.Exists(dllPath), $"插件 DLL 不存在: {dllPath}");
+
+            var manifest = new ModManifest
+            {
+                ModId = PluginId,
+                Version = new ModVersion(1, 0, 0),
+                Entry = "Com.Test.Plugin.PluginMod",
+                SharedModule = "com.test.plugin.dll",
+            };
             using var ms = new MemoryStream();
             using (var zip = new ZipArchive(ms, ZipArchiveMode.Create, leaveOpen: true))
             {
                 var manifestEntry = zip.CreateEntry("manifest.json");
                 using (var w = new StreamWriter(manifestEntry.Open()))
                     w.Write(manifest.ToJson());
-                var dllEntry = zip.CreateEntry("com.sample.hello.dll");
+                var dllEntry = zip.CreateEntry("com.test.plugin.dll");
                 using (var w = dllEntry.Open())
                 {
                     var bytes = File.ReadAllBytes(dllPath);
@@ -158,13 +164,11 @@ namespace TestRunner
             var modsDir = Path.Combine(tempRoot, "mods");
             Directory.CreateDirectory(modsDir);
 
-            server.PackageBytes = BuildHelloPackage();
-            server.ListJson = "[{\"modId\":\"com.sample.hello\",\"version\":\"0.1.0\",\"dependencies\":{\"com.game.core\":\">=1.0.0\"}}]";
-            server.ResolveJson = "{\"mods\":[{\"modId\":\"com.sample.hello\",\"version\":\"0.1.0\"},{\"modId\":\"com.game.core\",\"version\":\"1.0.0\"}]}";
+            server.PackageBytes = BuildPluginPackage();
+            server.ListJson = "[{\"modId\":\"com.test.plugin\",\"version\":\"1.0.0\",\"dependencies\":{}}]";
+            server.ResolveJson = "{\"mods\":[{\"modId\":\"com.test.plugin\",\"version\":\"1.0.0\"}]}";
 
             var host = new ModRuntimeHost(RuntimeRole.Host);
-            // 核心 Mod 预加载（hello 的依赖，随运行时分发而非商店下载）
-            host.Load(ModManifest.Parse(RepoPaths.ModJson("com.game.core")), typeof(CoreMod).Assembly);
             // 商店 Mod 加载（入口经真实 mod.json 解析）
             host.Load(ModManifest.Parse(RepoPaths.ModJson("com.game.modstore")), typeof(ModStoreMod).Assembly);
             ModStoreMod.Service.ServerBaseUrl = server.BaseUrl;
@@ -182,8 +186,8 @@ namespace TestRunner
             {
                 var mods = ModStoreMod.Service.ListRemoteMods().GetAwaiter().GetResult();
                 Assert.Equal(1, mods.Length);
-                Assert.Equal("com.sample.hello", mods[0].Id.Value);
-                Assert.Equal("0.1.0", mods[0].Version.ToString());
+                Assert.Equal("com.test.plugin", mods[0].Id.Value);
+                Assert.Equal("1.0.0", mods[0].Version.ToString());
             }
             finally { server.Dispose(); host.Manager.Unload(new ModId("com.game.modstore")); Directory.Delete(tempRoot, true); }
         }
@@ -194,21 +198,23 @@ namespace TestRunner
             var (host, server, modsDir, tempRoot) = Setup();
             try
             {
-                var helloId = new ModId("com.sample.hello");
-                Assert.True(!host.Manager.IsLoaded(helloId));
+                Assert.True(!host.Manager.IsLoaded(PluginId));
 
                 // 一键：闭包安装 → 启动（核心路径：呈现 → 下载到本地 mods 目录 → 启动）
                 var mod = ModStoreMod.Service
-                    .InstallAndStart(helloId, new ModVersion(0, 1, 0))
+                    .InstallAndStart(PluginId, new ModVersion(1, 0, 0))
                     .GetAwaiter().GetResult();
 
                 // 安装到本地 mods 目录
-                Assert.True(File.Exists(Path.Combine(modsDir, "com.sample.hello", "manifest.json")));
-                Assert.True(File.Exists(Path.Combine(modsDir, "com.sample.hello", "com.sample.hello.dll")));
+                Assert.True(File.Exists(Path.Combine(modsDir, "com.test.plugin", "manifest.json")));
+                Assert.True(File.Exists(Path.Combine(modsDir, "com.test.plugin", "com.test.plugin.dll")));
                 // 已启动：Register 生效（组件/系统已注册）
-                Assert.True(host.Manager.IsLoaded(helloId));
+                Assert.True(host.Manager.IsLoaded(PluginId));
                 Assert.Equal(ModObjectState.Running, mod.State);
-                Assert.Equal(1, host.Systems.CountOf(helloId));
+                Assert.Equal(1, host.Systems.CountOf(PluginId));
+                // 动态加载的是插件程序集自身的入口（而非测试进程内类型）
+                Assert.Equal("Com.Test.Plugin.PluginMod", mod.Instance.GetType().FullName);
+                Assert.Equal("com.test.plugin", mod.Assemblies[0].GetName().Name);
             }
             finally { server.Dispose(); Directory.Delete(tempRoot, true); }
         }
@@ -219,12 +225,11 @@ namespace TestRunner
             var (host, server, modsDir, tempRoot) = Setup();
             try
             {
-                var helloId = new ModId("com.sample.hello");
-                ModStoreMod.Service.InstallWithClosure(helloId, new ModVersion(0, 1, 0)).GetAwaiter().GetResult();
+                ModStoreMod.Service.InstallWithClosure(PluginId, new ModVersion(1, 0, 0)).GetAwaiter().GetResult();
                 // 第二次：已安装 → 跳过下载仍可用
-                var again = ModStoreMod.Service.InstallWithClosure(helloId, new ModVersion(0, 1, 0)).GetAwaiter().GetResult();
+                var again = ModStoreMod.Service.InstallWithClosure(PluginId, new ModVersion(1, 0, 0)).GetAwaiter().GetResult();
                 Assert.Equal(0, again.Length); // 无新安装
-                var mod = ModStoreMod.Service.StartInstalled(helloId);
+                var mod = ModStoreMod.Service.StartInstalled(PluginId);
                 Assert.Equal(ModObjectState.Running, mod.State);
             }
             finally { server.Dispose(); Directory.Delete(tempRoot, true); }
@@ -284,7 +289,7 @@ namespace TestRunner
                 }, typeof(StoreProbeMod).Assembly);
 
                 Assert.True(StoreProbeMod.Listed is not null);
-                Assert.True(StoreProbeMod.Listed!.Any(s => s.StartsWith("com.sample.hello@")),
+                Assert.True(StoreProbeMod.Listed!.Any(s => s.StartsWith("com.test.plugin@")),
                     $"能力返回不含 hello: [{string.Join(", ", StoreProbeMod.Listed!)}]");
             }
             finally { server.Dispose(); Directory.Delete(tempRoot, true); }
