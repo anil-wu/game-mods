@@ -1,6 +1,6 @@
 {
   "id": "com.sample.pushbox",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "entry": "Com.Sample.PushBox.PushBoxMod",
   "modules": {
     "shared": "com.sample.pushbox.dll"
