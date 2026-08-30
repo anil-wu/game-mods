@@ -73,7 +73,7 @@ namespace Game.Runtime
         {
             if (!_viewsByMod.TryGetValue(id, out var list)) return;
             foreach (var go in list)
-                if (go != null) Destroy(go);
+                if (go != null) Object.Destroy(go);
             _viewsByMod.Remove(id);
             Debug.Log($"[ModRuntime] 已销毁视图（{id}）");
         }
