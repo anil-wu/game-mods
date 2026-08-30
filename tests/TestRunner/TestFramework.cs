@@ -80,9 +80,9 @@ namespace TestRunner
 
         public static string ModJson(string modId) => File.ReadAllText(Path.Combine(ModDir(modId), "mod.json"));
 
-        /// <summary>复刻案例 Mod 目录（samples/&lt;Case&gt;/mods/&lt;modId&gt;，规范 Rule 3/4）。</summary>
+        /// <summary>复刻案例 Mod 目录（samples/&lt;Case&gt;/Assets/Mods/&lt;modId&gt;，mod-unity-project.md）。</summary>
         public static string SampleModDir(string caseName, string modId) =>
-            Path.Combine(Root, "samples", caseName, "mods", modId);
+            Path.Combine(Root, "samples", caseName, "Assets", "Mods", modId);
 
         public static string SampleModJson(string caseName, string modId) =>
             File.ReadAllText(Path.Combine(SampleModDir(caseName, modId), "mod.json"));

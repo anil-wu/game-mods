@@ -52,3 +52,5 @@ samples/**/Assets/Plugins/*.dll.meta
 # Mod 工程自动生成的 ProjectSettings（模板仅保留 ProjectVersion.txt）
 samples/**/ProjectSettings/*.asset
 mods/**/ProjectSettings/*.asset
+
+**/BundleBuild/
