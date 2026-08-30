@@ -19,6 +19,7 @@ namespace Game.Runtime
             // Host 角色：同时运行 Client + Server 两套逻辑（§6/§11.3）
             Host = new ModRuntimeHost(RuntimeRole.Host, new UnityLog());
             Host.Manager.ModLoaded += InstantiateViews;
+            Host.Manager.ModUnloaded += DestroyViews;
 
             var modsDir = Path.Combine(Application.streamingAssetsPath, "mods");
             var errors = Host.LoadDirectory(modsDir);
@@ -43,9 +44,14 @@ namespace Game.Runtime
             Initialized = errors.Count == 0;
         }
 
+        /// <summary>视图归属 ModObject：实例化按 Mod 追踪，卸载即销毁（热卸载不残留野视图）。</summary>
+        private static readonly System.Collections.Generic.Dictionary<
+            Game.Mod.Contract.ModId, System.Collections.Generic.List<GameObject>> _viewsByMod = new();
+
         /// <summary>实例化 Mod 自带的视图（MonoBehaviour）——通用机制，运行时无需感知具体 Mod。</summary>
         private static void InstantiateViews(ModObject mod)
         {
+            var list = new System.Collections.Generic.List<GameObject>();
             foreach (var asm in mod.Assemblies)
             {
                 foreach (var t in asm.GetTypes())
@@ -54,10 +60,22 @@ namespace Game.Runtime
                     {
                         var go = new GameObject(t.Name);
                         go.AddComponent(t);
+                        list.Add(go);
                         Debug.Log($"[ModRuntime] 实例化视图 {t.Name}（{mod.Info.Id}）");
                     }
                 }
             }
+            _viewsByMod[mod.Info.Id] = list;
+        }
+
+        /// <summary>Mod 卸载 → 销毁其全部视图（与 ModObject 生命周期严格一致，§7）。</summary>
+        private static void DestroyViews(Game.Mod.Contract.ModId id)
+        {
+            if (!_viewsByMod.TryGetValue(id, out var list)) return;
+            foreach (var go in list)
+                if (go != null) Destroy(go);
+            _viewsByMod.Remove(id);
+            Debug.Log($"[ModRuntime] 已销毁视图（{id}）");
         }
     }
 

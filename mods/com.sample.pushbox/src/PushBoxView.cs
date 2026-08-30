@@ -16,6 +16,7 @@ namespace Com.Sample.PushBox
         private float _boxX;
         private bool _won;
         private PlayerSide _winner;
+        private bool _quitPopup;
 
         private void Awake()
         {
@@ -30,9 +31,13 @@ namespace Com.Sample.PushBox
 
         private void Update()
         {
+            // Esc：呼出 / 关闭退出游戏弹窗
+            if (Input.GetKeyDown(KeyCode.Escape))
+                _quitPopup = !_quitPopup;
+
             // 输入：A=左玩家推(→)，D=右玩家推(←)
             // Client 唯一出口 SendToServer（§11.7）；Host 本地客户端也走完整协议回环，不短路（§11.3）
-            if (PushBoxMod.Context.Network.IsActive)
+            if (!_quitPopup && PushBoxMod.Context.Network.IsActive)
             {
                 PushBoxMod.Context.Network.SendToServer(
                     InputProtocol.Id, new PushInput(PlayerSide.Left, Input.GetKey(KeyCode.A)));
@@ -80,8 +85,47 @@ namespace Com.Sample.PushBox
             // 状态
             string status = _won
                 ? $"游戏结束！胜者: {(_winner == PlayerSide.Left ? "A(左)" : "B(右)")}"
-                : "按 A=左玩家推(→)   按 D=右玩家推(←)";
-            GUI.Label(new Rect(20, 20, 600, 30), status);
+                : "按 A=左玩家推(→)   按 D=右玩家推(←)   Esc=退出游戏";
+            GUI.Label(new Rect(20, 20, 700, 30), status);
+
+            // 退出游戏弹窗（Esc 呼出）
+            if (_quitPopup)
+                DrawQuitPopup();
+        }
+
+        /// <summary>退出游戏确认弹窗（居中）。</summary>
+        private void DrawQuitPopup()
+        {
+            const float w = 340f, h = 150f;
+            GUILayout.BeginArea(new Rect((Screen.width - w) / 2f, (Screen.height - h) / 2f, w, h), GUI.skin.box);
+            GUILayout.FlexibleSpace();
+            GUILayout.Label("<b>退出推箱子？</b>", new GUIStyle(GUI.skin.label) { alignment = TextAnchor.MiddleCenter });
+            GUILayout.Label("将卸载本游戏并返回大厅（Mod 商店）。", new GUIStyle(GUI.skin.label) { alignment = TextAnchor.MiddleCenter });
+            GUILayout.FlexibleSpace();
+            GUILayout.BeginHorizontal();
+            GUILayout.FlexibleSpace();
+            if (GUILayout.Button("退出游戏", GUILayout.Width(100), GUILayout.Height(32)))
+            {
+                _quitPopup = false;
+                QuitToLobby();
+            }
+            GUILayout.Space(16);
+            if (GUILayout.Button("取消", GUILayout.Width(100), GUILayout.Height(32)))
+                _quitPopup = false;
+            GUILayout.FlexibleSpace();
+            GUILayout.EndHorizontal();
+            GUILayout.FlexibleSpace();
+            GUILayout.EndArea();
+        }
+
+        /// <summary>
+        /// 退出推箱子 = 热卸载本 Mod 返回大厅：经合法通道（context.Mods，§12.10）发起，
+        /// 按 §7 管线镜像销毁——协议/系统/事件/视图全部清理；主 Mod 与框架 Mod（pinned）存活。
+        /// </summary>
+        private static void QuitToLobby()
+        {
+            var context = PushBoxMod.Context; // 先取引用：Unregister 后静态桥会被清空
+            context.Mods.Unload(PushBoxMod.ModIdValue);
         }
     }
 }

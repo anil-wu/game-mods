@@ -129,6 +129,26 @@ namespace TestRunner
         }
 
         [Test]
+        public static void SelfUnload_QuitGameToLobby()
+        {
+            // 退出推箱子（非整个应用）：Mod 经 context.Mods 合法通道热卸载自身，返回大厅
+            var f = Fixture.Create();
+            f.Push(PlayerSide.Left, true);
+            f.Tick(50);
+
+            f.PushBoxCtx.Mods.Unload(PushBoxId);
+
+            // 游戏 Mod 完全卸载：协议 / 系统 / 事件全部清理
+            var runtime = NetworkMod.Current!;
+            Assert.True(!f.Host.Manager.IsLoaded(PushBoxId));
+            Assert.True(!runtime.IsRegistered(ProtocolId.Of("com.sample.pushbox:input")));
+            Assert.Equal(0, f.Host.Systems.CountOf(PushBoxId));
+            // 大厅存活：框架 Mod（pinned）与其他 Mod 不受影响
+            Assert.True(f.Host.Manager.IsLoaded(new ModId("com.game.network")));
+            Assert.True(runtime.IsActive);
+        }
+
+        [Test]
         public static void Unload_CleansNetworkAndMessages()
         {
             var f = Fixture.Create();

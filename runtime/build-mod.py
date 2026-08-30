@@ -16,7 +16,8 @@ UNITYENGINE = os.path.join(UNITY_HOME, "Data", "Managed", "UnityEngine")
 TARGET = os.path.join(ROOT, "runtime", "Unity", "Assets", "StreamingAssets", "mods")
 TMP = os.path.join(ROOT, ".tmp_modbuild")
 FRAMEWORK = ["Game.Mod.Contract", "Game.ECS", "Game.Messaging", "Game.Mod.Runtime"]
-UNITY_REFS = ["UnityEngine.CoreModule", "UnityEngine.IMGUIModule", "UnityEngine.InputLegacyModule"]
+UNITY_REFS = ["UnityEngine.CoreModule", "UnityEngine.IMGUIModule", "UnityEngine.InputLegacyModule",
+              "UnityEngine.TextRenderingModule"]
 
 
 def load_mods():
