@@ -14,6 +14,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 UNITY_HOME = os.environ.get("UNITY_HOME", "D:/Programs/Unity/2022.3.62f3/Editor")
 UNITYENGINE = os.path.join(UNITY_HOME, "Data", "Managed", "UnityEngine")
 TARGET = os.path.join(ROOT, "runtime", "Unity", "Assets", "StreamingAssets", "mods")
+DIST_MODS = os.path.join(ROOT, "dist", "mods")  # 全部 Mod 的构建暂存（打包/商店分发源）
 TMP = os.path.join(ROOT, ".tmp_modbuild")
 FRAMEWORK = ["Game.Mod.Contract", "Game.ECS", "Game.Messaging", "Game.Mod.Runtime"]
 UNITY_REFS = ["UnityEngine.CoreModule", "UnityEngine.IMGUIModule", "UnityEngine.InputLegacyModule",
@@ -36,6 +37,7 @@ def load_mods():
             "id": m["id"],
             "entry": entry,
             "deps": deps,
+            "boot": m.get("boot", True),  # False = 不进启动集（仅商店/打包分发）
         }
     return mods
 
@@ -116,17 +118,35 @@ def build_mod(mod, mods):
         print(r.stderr)
         raise SystemExit(f"构建 {mod['id']} 失败")
 
-    outdir = os.path.join(TARGET, mod["id"])
-    os.makedirs(outdir, exist_ok=True)
-    shutil.copy(
-        os.path.join(TMP, "bin", "Release", "netstandard2.1", mod["id"] + ".dll"),
-        os.path.join(outdir, mod["entry"]),
-    )
-    shutil.copy(os.path.join(mod["dir"], "mod.json"), os.path.join(outdir, "manifest.json"))
+    dll_path = os.path.join(TMP, "bin", "Release", "netstandard2.1", mod["id"] + ".dll")
+
+    # 1. 构建暂存（全部 Mod）：打包 / 商店分发的来源
+    dist_dir = os.path.join(DIST_MODS, mod["id"])
+    os.makedirs(dist_dir, exist_ok=True)
+    shutil.copy(dll_path, os.path.join(dist_dir, mod["entry"]))
+    shutil.copy(os.path.join(mod["dir"], "mod.json"), os.path.join(dist_dir, "manifest.json"))
     datadir = os.path.join(mod["dir"], "data")
     if os.path.isdir(datadir):
-        shutil.copytree(datadir, os.path.join(outdir, "data"), dirs_exist_ok=True)
-    print(f">>> 已构建 {mod['id']} → {outdir}")
+        shutil.copytree(datadir, os.path.join(dist_dir, "data"), dirs_exist_ok=True)
+
+    # 2. 启动集（boot != false 才拷贝；boot=false 的残留目录清除）
+    outdir = os.path.join(TARGET, mod["id"])
+    if mod["boot"]:
+        os.makedirs(outdir, exist_ok=True)
+        shutil.copy(dll_path, os.path.join(outdir, mod["entry"]))
+        shutil.copy(os.path.join(mod["dir"], "mod.json"), os.path.join(outdir, "manifest.json"))
+        if os.path.isdir(datadir):
+            shutil.copytree(datadir, os.path.join(outdir, "data"), dirs_exist_ok=True)
+        print(f">>> 已构建 {mod['id']} → {outdir}（启动集）")
+    else:
+        if os.path.isdir(outdir):
+            shutil.rmtree(outdir)
+            meta = outdir + ".meta"
+            if os.path.isfile(meta):
+                os.remove(meta)
+            print(f">>> 已构建 {mod['id']} → {dist_dir}（boot=false，不进启动集，已清除残留）")
+        else:
+            print(f">>> 已构建 {mod['id']} → {dist_dir}（boot=false，仅打包分发）")
 
 
 def main():

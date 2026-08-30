@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""把已构建的 Mod 目录（StreamingAssets/mods/<modId>）打包为 .mod（zip），供上传到 mod_server。
+"""把构建暂存的 Mod 目录（dist/mods/<modId>）打包为 .mod（zip），供上传到 mod_server。
 
 用法: python runtime/pack-mod.py [modId ...]   (不传则打包全部)
 产物: dist/packages/<modId>-<version>.mod
@@ -10,7 +10,7 @@ import sys
 import zipfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SRC = os.path.join(ROOT, "runtime", "Unity", "Assets", "StreamingAssets", "mods")
+SRC = os.path.join(ROOT, "dist", "mods")  # build-mod.py 的构建暂存（含 boot=false 的 Mod）
 OUT = os.path.join(ROOT, "dist", "packages")
 
 

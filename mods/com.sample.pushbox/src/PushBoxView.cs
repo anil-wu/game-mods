@@ -20,6 +20,14 @@ namespace Com.Sample.PushBox
 
         private void Awake()
         {
+            // 防御：静态桥不可用时禁用自身（如残留的旧程序集副本视图）
+            if (PushBoxMod.World is null)
+            {
+                Debug.LogError("[PushBox] 静态桥未就绪（可能为残留视图），已禁用");
+                enabled = false;
+                return;
+            }
+
             // 找到 Session 单例实体，拿到箱子引用
             foreach (var (entity, session) in PushBoxMod.World.Store<Session>().All())
             {

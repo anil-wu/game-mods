@@ -255,6 +255,28 @@ namespace TestRunner
             finally { Directory.Delete(dir, true); }
         }
 
+        [Test]
+        public static void Reinstall_AfterUnload_Works()
+        {
+            // 退出游戏后再启动：卸载 → 重装必须正常工作（程序集复用首份副本）
+            var (host, server, modsDir, tempRoot) = Setup();
+            try
+            {
+                ModStoreMod.Service.InstallAndStart(PluginId, new ModVersion(1, 0, 0)).GetAwaiter().GetResult();
+                Assert.True(host.Manager.IsLoaded(PluginId));
+
+                host.Manager.Unload(PluginId);
+                Assert.True(!host.Manager.IsLoaded(PluginId));
+                Assert.Equal(0, host.Systems.CountOf(PluginId));
+
+                // 再启动（文件已在本地，走"已安装"路径）
+                var mod = ModStoreMod.Service.StartInstalled(PluginId);
+                Assert.Equal(ModObjectState.Running, mod.State);
+                Assert.Equal(1, host.Systems.CountOf(PluginId));
+            }
+            finally { server.Dispose(); Directory.Delete(tempRoot, true); }
+        }
+
         /// <summary>探针 Mod：经 ModCall 消费商店能力（§12.11）。</summary>
         public sealed class StoreProbeMod : IMod
         {

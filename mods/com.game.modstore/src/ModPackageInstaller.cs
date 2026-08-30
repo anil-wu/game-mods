@@ -49,5 +49,22 @@ namespace Com.Game.ModStore
             var manifestPath = Path.Combine(localModsDir, id.Value, "manifest.json");
             return File.Exists(manifestPath);
         }
+
+        /// <summary>读取本地已安装 Mod 的版本（未安装返回 null）。</summary>
+        public static ModVersion? GetInstalledVersion(ModId id, string localModsDir)
+        {
+            var manifestPath = Path.Combine(localModsDir, id.Value, "manifest.json");
+            if (!File.Exists(manifestPath)) return null;
+            try { return ModManifest.Parse(File.ReadAllText(manifestPath)).Version; }
+            catch { return null; }
+        }
+
+        /// <summary>清空安装目录（重新安装前调用，避免旧文件残留）。</summary>
+        public static void Wipe(ModId id, string localModsDir)
+        {
+            var dir = Path.Combine(localModsDir, id.Value);
+            if (Directory.Exists(dir))
+                Directory.Delete(dir, recursive: true);
+        }
     }
 }

@@ -6,6 +6,10 @@
     "shared": "com.sample.hello.dll"
   },
   "dependencies": [
-    { "id": "com.game.core", "version": ">=1.0.0" }
-  ]
+    {
+      "id": "com.game.core",
+      "version": ">=1.0.0"
+    }
+  ],
+  "boot": false
 }

@@ -339,6 +339,21 @@ namespace TestRunner
             Assert.True(!host.Manager.IsLoaded(WeaponMod.Id));
         }
 
+        [Test]
+        public static void AssemblyLoader_Dedup_ReusesLoadedCopy()
+        {
+            // Unity 字节加载不可卸载：同名程序集必须复用首份副本，
+            // 否则卸载（静态桥清空）后重装会绑到静态桥已死的旧副本（NRE）
+            var dllPath = Path.Combine(RepoPaths.Root, "tests", "TestPlugin", "bin", "Release", "netstandard2.1", "com.test.plugin.dll");
+            Assert.True(File.Exists(dllPath), $"插件 DLL 不存在: {dllPath}");
+
+            var loader = new ByteArrayAssemblyLoader();
+            var first = loader.Load(new[] { dllPath });
+            var second = loader.Load(new[] { dllPath });
+            Assert.True(ReferenceEquals(first.Assemblies[0], second.Assemblies[0]),
+                "同名程序集未复用——会产生多份静态状态分歧的副本");
+        }
+
         // ---- ECS 归属 ----
 
         [Test]
