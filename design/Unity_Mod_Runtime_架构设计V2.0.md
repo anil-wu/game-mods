@@ -222,13 +222,18 @@ Weapon.ModObject
 │   └── VFX
 │
 ├── ECS
-│   ├── Components
-│   └── Systems
+│   ├── Components   （类型注册常驻，见 §9.2）
+│   ├── Systems      （owner 化，卸载移除）
+│   └── Entities     （owner 化，卸载随 ModObject 强制销毁，§9.2）
+│
+├── Views            （Unity 场景对象：MonoBehaviour 视图，owner 化，卸载即销毁）
 │
 └── Network
     ├── Protocols
     └── Handlers
 ```
+
+> **资源边界的完整定义**：Mod 对 Runtime 的每一项持有物（系统 / 订阅 / 协议 / 窗口 / 服务 / 能力 / 池 / 资源 / **实体** / **视图**）都必须归属 ModObject——"谁注册谁归属，归属即可强制回收"。这是卸载机制（§7）成立的前提。
 
 于是：
 
@@ -389,6 +394,10 @@ WeaponMod
 
 后续甚至可以把 `ClientContext` / `ServerContext` 做成**权限边界**，让 Mod 根本无法在 Client 环境访问 Server-only API。
 
+### 退出以 ModObject 为原子粒度（Host 前后端同时退出）
+
+Client / Server 是同一 ModObject 的两套上下文——**卸载以 ModObject 为原子单位，前后端持有物同帧清零**，禁止"退了画面留了模拟"：Server 侧（权威系统 / 权威实体 / C2S 协议）与 Client 侧（S2C 协议 / 本地落地状态 / 订阅 / 视图）走同一条卸载管线（§7）。未来 Shared/Client/Server 三模块裁剪（§15.4）只影响"装什么"，不影响"退什么"。
+
 ### 资源生命周期仍然属于 ModObject，而不是 Client/Server 各搞一套
 
 ```
@@ -435,6 +444,13 @@ public interface IModManager
     void Unload(ModId id);
     ModObject Get(ModId id);
 
+    // 退出游戏 / 停止会话：按加载顺序的镜像销毁全部 Mod（依赖方先卸，pinned 除外，§10.4）
+    List<string> UnloadAll();
+
+    // 动态安装入口（Mod 商店等管理型 Mod 专用）：注册包目录 / 从包目录加载
+    ModManifest RegisterDirectory(string modDirectory);
+    ModObject LoadFromDirectory(string modDirectory);
+
     // Mod 间能力调用（跨 Mod 唯一的有返回通道，见 §12.11）
     void Export(CapabilityId id, Delegate handler);          // 当前 Mod 导出能力
     object Call(ModId target, CapabilityId id, in object args);
@@ -461,18 +477,29 @@ Load(Mod)
 ```
 Unload(Mod)
  │
- ├── IMod.Unregister()
- ├── WindowManager.CloseAll(modId)
- ├── MessageBus.UnsubscribeAll(modId)
- ├── Remove Network Registration
- ├── Remove ECS Registration
- ├── Remove UI Registration
- ├── Clear ObjectPool
- ├── Release ResourceScope
- ├── Dispose Context
- ├── Destroy ModObject
- └── Unload Assembly
+ ├── 0. 泄漏统计（各项注册计数 → 卸载报告，反映 Mod 是否对称注销）
+ ├── 1. IMod.Unregister()              ← Mod 自觉：对称注销 + 清静态桥
+ ├── 2. WindowManager.CloseAll(modId)  ┐
+ ├── 3. MessageBus.UnsubscribeAll(modId)│
+ ├── 4. Remove Network Registration    │ 先停“生产者”
+ ├── 5. Remove ECS Systems(modId)      │（系统 / Handler / 视图）
+ ├── 5.1 World.DestroyAll(modId)       │ 销毁 Mod 全部实体（须在系统移除后，§9.2）
+ ├── 5.2 DestroyViews(modId)           ┘ 销毁场景视图 GameObject
+ ├── 6. Remove Services / Capabilities ┐
+ ├── 7. Clear ObjectPool               │ 再清“状态”
+ ├── 8. Release ResourceScope          ┘
+ ├── 9. Dispose Context                ┐ 最后失效化：残留引用即抛异常（非野指针）
+ ├── 10. Destroy ModObject             │
+ └── 11. Unload Assembly               ┘（HybridCLR 前为“同副本重入”，§15.2）
 ```
+
+**顺序原则（硬约束）：先停生产者（系统 / Handler / 视图）→ 再清状态（实体 / 池 / 资源）→ 最后失效化（Context / 程序集）。**
+
+**相位规则**：驱动相位内（系统 Update / 协议 Handler / 消息 Handler 执行中）调用 `Unload` 不立即执行——请求入队，当前相位结束（帧末）统一执行，避免迭代途中修改系统/实体集合导致崩溃（与 §13.6 规则 3 同构）；相位外调用同步执行。
+
+**前置校验**：目标未加载 → `NoModException`；目标为 pinned 主 Mod → 拒绝（§10.4）；仍被其他已加载 Mod 依赖 → 拒绝（先卸依赖方，DAG 镜像序）。
+
+**卸载报告**：管线结束输出强制回收计数（系统 / 订阅 / 协议 / 服务 / 能力 / 实体）——被 Core 强制回收 > 0 即 Mod 未对称注销，是 UGC 生态的质量信号与审核指标。
 
 ### 完整生命周期图
 
@@ -797,6 +824,12 @@ ECS Entity       由 ECS Runtime  → EntityManager
 
 Mod 可以封装自己的 `WeaponEntityFactory`，但不应该自己实现一个 `EntityManager`。
 
+**ECS 归属与回收（硬规则，pushbox 案例实证）：**
+
+1. **实体 owner 化**：Mod 经 `context.Ecs.CreateEntity()` 创建的实体归属当前 ModObject，卸载时 `World.DestroyAll(modId)` 强制销毁（§7 步骤 5.1）——不销毁会导致旧 Session/旧实体残留共享 World，重装后视图/模拟挂到僵死实体上（"操作无反应"事故）。
+2. **组件类型注册常驻**：组件存储是类型键全局结构，实体存活时移除类型不安全——类型不按 Mod 移除（无状态、无害），实体强制销毁已覆盖实际危害。
+3. **系统注册 owner 化**：`SystemGroup` 按 owner 追踪，卸载 `RemoveAll(modId)`——必须先于实体销毁执行（先停生产者，再清状态）。
+
 ---
 
 ## 10. UI 系统（UIManager 也是一个 Mod）
@@ -919,7 +952,7 @@ UI.Mod 与 Network.Mod 是**同一个模式的两个实例**——Framework Mod�
 UI.Mod、Network.Mod 这类**基础设施 Mod** 与普通业务 Mod 地位不同：
 
 1. **加载顺序最前**：ModResolver 保证 Framework Mod 先于依赖它们的业务 Mod 注册；
-2. **默认禁止热卸载**：卸载 UI.Mod 意味着整个 UI 系统下线，必须先卸载全部依赖它的 Mod——实际中等同于"只能整体停服级操作"；
+2. **默认禁止热卸载**：卸载 UI.Mod 意味着整个 UI 系统下线，必须先卸载全部依赖它的 Mod——实际中等同于"只能整体停服级操作"。该约束由 Manifest 的 **`"pinned": true`** 字段形式化：pinned Mod 的 `Unload` 直接被 Core 拒绝，退出游戏 `UnloadAll` 时跳过（随进程生命周期存活）。主 Mod（如 com.game.core）与框架 Mod（Network.Mod / UI.Mod）一律 pinned；
 3. **环境裁剪**：UI.Mod 只在 `HasClient` 环境生效，Dedicated Server 不加载或注册为空实现。
 
 > 该规则对 Network.Mod、UI.Mod 以及未来的其他 Framework Mod（如 Asset.Mod）统一适用。
@@ -1388,6 +1421,14 @@ Session 模型：Host 启动 → `CreateSession()` → Relay 返回 SessionId（
 
 - **信任模型（显式声明）**：**Host 模式下 Host 即权威，其他客户端天然信任 Host 机器**——适用于合作 / PVE / 好友联机；竞争性玩法必须使用 Service（Dedicated Server）模式，不允许用 Host 模式承载。
 - **UGC 防护**：Encode 输出受 Writer 边界检查（越界 / 超 MaxSize 即丢弃并对该 Mod 记违规）；配合 §11.13 的配额，恶意或写错的 Mod 无法拖垮服务器。
+
+### 11.14.1 重装语义（HybridCLR 接入前）
+
+字节加载（`Assembly.Load(bytes)`）的程序集在 Unity 中**不可卸载**；重复加载会产生多份副本，而 Unity 脚本绑定按"程序集名+类名"关联到**首份副本**——若首份在卸载时静态状态已清空，重装视图会绑到已死副本（NRE 事故）。因此 HybridCLR 接入前的重装语义为**"同副本重入"**：
+
+1. 程序集加载器按名称**去重复用**（同 AppDomain 已加载则复用首份），注册 / 静态桥 / 视图恒落同一份副本；
+2. Mod 的静态状态必须**可重入**：`Register` 幂等重设，`Unregister` 清空——重装 = 同一程序集上的新 ModObject；
+3. 代码变更需**重启进程**生效（商店更新新版本在本语义下不能热生效）；HybridCLR 接入后由热更正式接管，恢复"全新副本 + 新代码"。接入前商店分发应以版本号为重装依据（SemVer 纪律：任何行为变更必须升号）。
 
 ### 11.13 流量统计、配额与可观测性
 
@@ -2406,6 +2447,7 @@ Manifest 表达模块划分：
 | Rule 17 | 联网会话存续期间，禁止热卸载注册了网络协议的 Mod；协议更新必须先结束会话（§11.14） |
 | Rule 18 | 一个 Mod = 一个功能领域 = Shared / Client / Server 三个运行模块，按环境裁剪加载；不拆成独立的 Client Mod / Server Mod（§15.4） |
 | Rule 19 | 契约 = 文档：Mod 之间不共享任何数据契约程序集；消息 / ModCall Args / 协议 Schema 以字节流格式文档发布，消费方基于文档自行实现解析（用 Core 提供的安全读写原语）；线格式统一为字段编号 + 可跳读分帧 + append-only；owner Mod 必须随版本发布测试向量（§14.11） |
+| Rule 20 | 注册即归属：Mod 的一切注册（系统 / 订阅 / 协议 / 窗口 / 服务 / 能力 / 池 / 资源 / **实体** / **视图**）归属 ModObject；卸载时 Core 按归属**强制回收**（不依赖 Mod 自觉），顺序为"先停生产者 → 再清状态 → 最后失效化"；相位内卸载请求帧末执行（§7） |
 
 ## 17. 最终职责边界表
 
@@ -2444,13 +2486,35 @@ Manifest 表达模块划分：
 | Message Envelope / 校验 / 配额 / Trace | Core Message Runtime |
 | Message Payload / 版本演化（append-only） | 消息的 owner Mod |
 | 契约文档（消息 / Args / 协议的字节流 Schema + 测试向量） | owner Mod 发布并维护，与实现同步；Mod 间不共享契约程序集，消费方基于文档自行解析（§14.11） |
-| ECS Entity 生命周期 | ECS Runtime |
+| ECS Entity 生命周期 | ECS Runtime（创建/销毁）；实体 owner 归属 ModObject，卸载 `DestroyAll(modId)` 强制回收（§9.2） |
+| 场景视图（MonoBehaviour）实例化与销毁 | Core Runtime 通用机制（`ModLoaded` 实例化 / `ModUnloaded` 销毁，归属 ModObject） |
 | Mod 间调用 | ModCall（`context.Mods.Call`，§12.11） |
 | Mod 依赖 | Mod Loader |
+| 主 Mod / 框架 Mod 禁销毁（pinned） | ModManager（Manifest `"pinned": true`，§10.4） |
 
 ---
 
-## 18. 结语
+## 18. 修订记录
+
+### V2.0.1（2026-08，pushbox 退出闭环实证修订）
+
+以 `com.sample.pushbox` 的"商店安装 → 游玩 → Esc 退出 → 再进入"闭环为验收场，三个真实缺陷倒逼设计补全（详见 `mod-lifecycle-exit-analysis.md`）：
+
+| 缺陷（实证事故） | 修订 |
+|---|---|
+| 视图 GameObject 卸载后残留 → NRE | §4 ModObject 增加 Views 归属；§7 管线增加 DestroyViews(modId) |
+| 字节加载重装产生副本分歧，Unity 绑定已死首份副本 → NRE | §11.14.1 重装语义：程序集按名去重 + 静态重入（HybridCLR 前） |
+| ECS 实体卸载不销毁，重装后挂旧实体 → "操作无反应" | §9.2 实体 owner 化（CreateEntity(owner) / DestroyAll(modId)）；§7 增加步骤 5.1 |
+
+其他补全：
+
+- §6 新增"退出以 ModObject 为原子粒度（Host 前后端同时退出）"；
+- §7 IModManager 增加 `UnloadAll`（退出游戏按加载镜像销毁）、`RegisterDirectory` / `LoadFromDirectory`（Mod 商店动态安装通道）；卸载管线重写为 11 步 + 顺序原则 + 相位规则 + 泄漏报告（P0/P1）；
+- §10.4 pinned Manifest 字段形式化（主 Mod / 框架 Mod 禁止销毁）；
+- §16 新增 Rule 20（注册即归属，卸载强制回收）；
+- 构建约定：`mod.json` 的 `boot` 字段（false = 不进启动集，仅商店/打包分发）。
+
+## 19. 结语
 
 这套设计下：
 
