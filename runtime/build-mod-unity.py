@@ -22,6 +22,23 @@ DIST_MODS = os.path.join(ROOT, "dist", "mods")
 SAMPLE = os.path.join(ROOT, "samples", "MirrorUnityFPS")
 
 
+def ensure_asmdefs():
+    """每个 Mod 的 Scripts/ 需有 {modId}.asmdef（独立命名程序集，避免与 Assembly-CSharp 冲突）。
+    缺则自动生成——否则 Mod 代码编进 Assembly-CSharp，ModPacker 找不到独立 DLL。"""
+    mods_root = os.path.join(SAMPLE, "Assets", "Mods")
+    for mod_id in os.listdir(mods_root):
+        mod_dir = os.path.join(mods_root, mod_id)
+        if not os.path.isfile(os.path.join(mod_dir, "mod.json")):
+            continue
+        scripts = os.path.join(mod_dir, "Scripts")
+        os.makedirs(scripts, exist_ok=True)
+        asmdef = os.path.join(scripts, mod_id + ".asmdef")
+        if not os.path.exists(asmdef):
+            with open(asmdef, "w", encoding="utf-8") as f:
+                f.write('{\n  "name": "%s"\n}\n' % mod_id)
+            print(f">>> 生成 asmdef {mod_id}")
+
+
 def sync_framework_dlls():
     """框架 DLL 拷入复刻工程的 Assets/Plugins（Mod 代码编译引用；不入库）。"""
     plugins = os.path.join(SAMPLE, "Assets", "Plugins")
@@ -39,6 +56,7 @@ def main():
         print("未找到复刻工程 Assets/Mods")
         return
 
+    ensure_asmdefs()
     sync_framework_dlls()
 
     env = dict(os.environ)
