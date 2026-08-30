@@ -62,14 +62,15 @@ namespace Com.Game.ModStore
                 if (ModPackageInstaller.IsInstalled(remote.Id, LocalModsDir))
                 {
                     var installedVersion = ModPackageInstaller.GetInstalledVersion(remote.Id, LocalModsDir);
-                    if (installedVersion is not null && installedVersion.Value == remote.Version)
+                    if (installedVersion is not null && installedVersion.Value == remote.Version
+                        && ModPackageInstaller.IsComplete(remote.Id, LocalModsDir))
                     {
-                        // 同版本已安装：注册包目录使依赖可被解析
+                        // 同版本且包完整：注册包目录使依赖可被解析
                         RegisterIfPresent(remote.Id);
                         continue;
                     }
-                    // 版本不一致（或清单损坏）→ 清空重装，杜绝旧包残留
-                    Status = $"{remote.Id.Value} 版本更新 {installedVersion} → {remote.Version}，重新安装";
+                    // 版本不一致 / 包不完整（如缺模块程序集）→ 清空重装，杜绝坏包残留
+                    Status = $"{remote.Id.Value} 包需重装（版本 {installedVersion} → {remote.Version} 或包不完整），重新安装";
                     ModPackageInstaller.Wipe(remote.Id, LocalModsDir);
                 }
 

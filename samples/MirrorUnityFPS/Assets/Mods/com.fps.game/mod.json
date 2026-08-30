@@ -1,17 +1,43 @@
 {
   "id": "com.fps.game",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "entry": "Com.Fps.Game.GameMod",
-  "modules": { "shared": "com.fps.game.dll" },
+  "modules": {
+    "shared": "com.fps.game.dll"
+  },
   "boot": false,
   "dependencies": [
-    { "id": "com.game.core", "version": ">=1.0.0" },
-    { "id": "com.game.network", "version": ">=1.0.0" },
-    { "id": "com.fps.player", "version": ">=0.1.0" },
-    { "id": "com.fps.weapon", "version": ">=0.1.0" },
-    { "id": "com.fps.inventory", "version": ">=0.1.0" },
-    { "id": "com.fps.npc", "version": ">=0.1.0" },
-    { "id": "com.fps.mapgen", "version": ">=0.1.0" },
-    { "id": "com.fps.console", "version": ">=0.1.0" }
+    {
+      "id": "com.game.core",
+      "version": ">=1.0.0"
+    },
+    {
+      "id": "com.game.network",
+      "version": ">=1.0.0"
+    },
+    {
+      "id": "com.fps.player",
+      "version": ">=0.1.0"
+    },
+    {
+      "id": "com.fps.weapon",
+      "version": ">=0.1.0"
+    },
+    {
+      "id": "com.fps.inventory",
+      "version": ">=0.1.0"
+    },
+    {
+      "id": "com.fps.npc",
+      "version": ">=0.1.0"
+    },
+    {
+      "id": "com.fps.mapgen",
+      "version": ">=0.1.0"
+    },
+    {
+      "id": "com.fps.console",
+      "version": ">=0.1.0"
+    }
   ]
 }

@@ -50,6 +50,22 @@ namespace Com.Game.ModStore
             return File.Exists(manifestPath);
         }
 
+        /// <summary>校验已安装包是否完整：manifest 声明的模块程序集都在位（防止坏包被版本相等跳过）。</summary>
+        public static bool IsComplete(ModId id, string localModsDir)
+        {
+            var dir = Path.Combine(localModsDir, id.Value);
+            var manifestPath = Path.Combine(dir, "manifest.json");
+            if (!File.Exists(manifestPath)) return false;
+            try
+            {
+                var m = ModManifest.Parse(File.ReadAllText(manifestPath));
+                foreach (var module in m.ModulesFor(true, true))
+                    if (!File.Exists(Path.Combine(dir, module))) return false;
+                return true;
+            }
+            catch { return false; }
+        }
+
         /// <summary>读取本地已安装 Mod 的版本（未安装返回 null）。</summary>
         public static ModVersion? GetInstalledVersion(ModId id, string localModsDir)
         {
