@@ -195,8 +195,9 @@ curl -F "file=@dist/packages/com.sample.hello-0.1.0.mod" http://127.0.0.1:5000/a
 # 3. Unity Play：右上角商店面板 → 刷新列表 → 安装并启动
 ```
 
-- **演示设计**：`com.sample.hello` 不在本地启动集（仅从商店分发）——点击"安装并启动"后可观察
-  下载 → 安装（`persistentDataPath/mods/com.sample.hello/`）→ 动态加载（Console 日志 + 系统注册）的完整 UGC 闭环
+- **演示设计**：`com.sample.hello` 与 `com.sample.pushbox` 均不在本地启动集（仅从商店分发）——
+  本地启动集仅 core / network / ui / modstore 四个。点击"安装并启动"后可观察
+  下载 → 安装（`persistentDataPath/mods/`）→ 动态加载的完整 UGC 闭环（pushbox 安装后立即可玩）
 - 能力导出（ModCall）：`modstore:list` / `modstore:install_and_start`，其他 Mod 可直接调用
 - 契约与行为约定见 `mods/com.game.modstore/CONTRACT.md`
 - 会话限制：联网会话中不要启动注册了新协议的 Mod（§11.14）
