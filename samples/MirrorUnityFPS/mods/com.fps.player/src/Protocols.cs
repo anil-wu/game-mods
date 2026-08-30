@@ -53,6 +53,17 @@ namespace Com.Fps.Player
         }
     }
 
+    public sealed class FacingCodec : IComponentCodec
+    {
+        public System.Type ComponentType => typeof(Facing);
+        public void Write(object boxed, INetworkWriter w) => w.WriteFloat(1, ((Facing)boxed).Yaw);
+        public object Read(INetworkReader r)
+        {
+            r.TryReadFloat(1, out var yaw);
+            return new Facing { Yaw = yaw };
+        }
+    }
+
     // ---- 协议载荷 DTO ----
 
     /// <summary>输入上报（C2S）。线格式见 CONTRACT.md。</summary>

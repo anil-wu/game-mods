@@ -41,6 +41,9 @@ namespace Com.Fps.Player
 
                 ctx.World.Add(e, p);
                 ctx.World.Add(e, v);
+                // 朝向随输入 yaw（复制给客户端，角色面朝移动方向）
+                if (ctx.World.Has<Facing>(e))
+                    ctx.World.Add(e, new Facing { Yaw = input.Yaw });
             }
         }
     }

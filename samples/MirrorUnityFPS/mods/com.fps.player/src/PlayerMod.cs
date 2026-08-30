@@ -74,11 +74,12 @@ namespace Com.Fps.Player
             context.Ecs.RegisterComponent(typeof(PlayerInput));
             context.Ecs.RegisterComponent(typeof(Health));
             context.Ecs.RegisterComponent(typeof(PlayerTag));
+            context.Ecs.RegisterComponent(typeof(Facing));
             context.Ecs.RegisterComponent(typeof(RespawnTimer));
 
             // 复制 Archetype 双端注册（§11.10：Spawn/Delta 共用同一套 Codec，Rule 14）
             context.Network.Replication.RegisterArchetype(PlayerArchetype,
-                new IComponentCodec[] { new Position3Codec(), new HealthCodec(), new PlayerTagCodec() });
+                new IComponentCodec[] { new Position3Codec(), new HealthCodec(), new PlayerTagCodec(), new FacingCodec() });
 
             // 能力导出（§12.11）
             context.Mods.Export(GetPositionCap, new GetPositionHandler(GetPosition));
@@ -138,6 +139,7 @@ namespace Com.Fps.Player
             context.Ecs.World.Add(e, new Velocity3());
             context.Ecs.World.Add(e, new Health { Current = PlayerConfig.MaxHealth, Max = PlayerConfig.MaxHealth });
             context.Ecs.World.Add(e, new PlayerTag { IsDummy = isDummy });
+            context.Ecs.World.Add(e, new Facing());
             if (!isDummy)
             {
                 context.Ecs.World.Add(e, new PlayerInput());

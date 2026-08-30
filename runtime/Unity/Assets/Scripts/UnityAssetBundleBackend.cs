@@ -22,7 +22,8 @@ namespace Game.Runtime
             var modId = Path.GetFileName(contentRoot.TrimEnd(Path.DirectorySeparatorChar));
             var key = localPath.Replace('/', Path.DirectorySeparatorChar);
             var withoutExt = key.Contains('.') ? key.Substring(0, key.LastIndexOf('.')) : key;
-            return $"assets/modassets/{modId}/{withoutExt}";
+            // Unity 的 bundle 资源名全小写（相对 Assets 的项目路径去扩展名）
+            return $"assets/modassets/{modId}/{withoutExt}".ToLowerInvariant();
         }
 
         public object? Load(string contentRoot, string localPath)

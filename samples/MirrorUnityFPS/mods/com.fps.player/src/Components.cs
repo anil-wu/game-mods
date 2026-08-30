@@ -23,6 +23,9 @@ namespace Com.Fps.Player
     /// <summary>玩家标记（复制）：Dummy=静态靶标；否则为可操作玩家。</summary>
     public struct PlayerTag : IComponent { public bool IsDummy; }
 
+    /// <summary>朝向（复制，度）：角色模型面朝方向（由服务端输入 yaw 写入）。</summary>
+    public struct Facing : IComponent { public float Yaw; }
+
     /// <summary>重生计时（服务端内部）：死亡后挂上，计时到即重生。</summary>
     public struct RespawnTimer : IComponent { public float T; }
 
