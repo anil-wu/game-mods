@@ -21,6 +21,9 @@ namespace Com.Game.Network
         public event Action<byte[]>? ReceivedOnClient;
         public event Action<int, byte[]>? ReceivedOnServer;
 
+        /// <summary>客户端就绪：StartClient 成功后同步触发（§11.6 握手触发点）。</summary>
+        public event Action? ClientReady;
+
         public IReadOnlyCollection<int> ServerConnections => _connections;
 
         public void StartServer()
@@ -35,6 +38,7 @@ namespace Com.Game.Network
             _clientUp = true;
             if (!_connections.Contains(LocalConnectionId))
                 _connections.Add(LocalConnectionId);
+            ClientReady?.Invoke();
         }
 
         public void Stop()

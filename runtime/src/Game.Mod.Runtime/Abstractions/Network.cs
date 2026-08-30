@@ -90,6 +90,19 @@ namespace Game.Mod.Runtime
     }
 
     /// <summary>
+    /// 兴趣管理钩子（§11.8）：Server 侧 Broadcast 过滤。
+    /// 广播不是无差别全房间发送——Gameplay / Mod 声明 relevance 规则（区域/队伍/观察者集合/距离），
+    /// Router 只把包发给"对该协议有可见性"的客户端。
+    /// 回调为进程内同线程（与 INetworkHandler 同一注册-回调模式，非跨 Mod 传委托/引用，Rule 12 不触线）。
+    /// 默认无 manager = 全房间广播（现状语义，零行为变化）。
+    /// </summary>
+    public interface IInterestManager
+    {
+        /// <summary>Server 侧 Broadcast 过滤：连接 connectionId 是否应收到 pid 协议这条消息。</summary>
+        bool IsRelevant(int connectionId, ProtocolId protocolId, in object message);
+    }
+
+    /// <summary>
     /// 网络传输提供者（§11.2 Provider 层：Mirror / Relay / Loopback 可替换）。
     /// 只看到二进制帧，不理解任何协议（与 Relay 的盲转发同一抽象层级）。
     /// </summary>
@@ -98,6 +111,13 @@ namespace Game.Mod.Runtime
         void StartClient();
         void StartServer();
         void Stop();
+
+        /// <summary>
+        /// 客户端角色传输就绪（§11.6 握手触发点）：
+        /// Loopback 在 StartClient 成功后同步触发；Mirror 在客户端连接建立后触发；Relay 在 BindAck 后触发。
+        /// NetworkRuntimeImpl 订阅后发起协议版本协商握手。
+        /// </summary>
+        event System.Action? ClientReady;
 
         /// <summary>Client → Server。</summary>
         void SendFromClient(byte[] frame);
@@ -162,6 +182,18 @@ namespace Game.Mod.Runtime
         void SendToClient(ModId sender, int connectionId, ProtocolId id, object message);
         void Broadcast(ModId sender, ProtocolId id, object message);
 
+        /// <summary>
+        /// 注册 / 清除兴趣过滤（§11.8；null = 清除回默认全发）。
+        /// owner 校验：只有协议 owner 可为其协议声明 relevance 规则；UnregisterAll 按 owner 清理（Rule 20）。
+        /// </summary>
+        void RegisterInterest(ModId owner, ProtocolId pid, IInterestManager? manager);
+
+        /// <summary>
+        /// 注册协议旧版本编解码器（§11.6 废弃窗口硬规则：服务端只保留"当前版本 + 上一个版本"）。
+        /// 仅协议 owner 可注册其旧版本 codec；UnregisterAll 按 owner 一并清理（Rule 20）。
+        /// </summary>
+        void RegisterLegacyCodec(ModId owner, ProtocolId id, ushort version, INetworkProtocol codec);
+
         NetworkStats GetStats();
     }
 
@@ -180,6 +212,10 @@ namespace Game.Mod.Runtime
         public long MessagesReceived;
         public long DroppedInvalid;
         public long DroppedQuota;
+
+        /// <summary>未协商连接上的业务帧 / 已降级禁用协议帧（§11.6 防御：握手完成前业务流量不可注入）。</summary>
+        public long DroppedNotNegotiated;
+
         public readonly Dictionary<ModId, long> BytesByMod = new();
         public readonly Dictionary<ProtocolId, long> MessagesByProtocol = new();
     }

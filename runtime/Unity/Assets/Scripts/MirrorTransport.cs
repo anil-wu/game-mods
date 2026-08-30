@@ -27,6 +27,9 @@ namespace Game.Runtime
         public event Action<byte[]>? ReceivedOnClient;
         public event Action<int, byte[]>? ReceivedOnServer;
 
+        /// <summary>客户端连接建立后触发（§11.6 握手触发点：KCP 连接就绪才能发出 hello）。</summary>
+        public event Action? ClientReady;
+
         public IReadOnlyCollection<int> ServerConnections => _connections;
 
         private void Awake()
@@ -57,13 +60,21 @@ namespace Game.Runtime
         public void StartClient()
         {
             if (_clientUp) return;
+            NetworkClient.OnConnectedEvent += OnClientConnected;
             NetworkClient.Connect("localhost"); // Host 本地客户端走真实网络栈回环（§11.3 不短路）
             _clientUp = true;
+        }
+
+        private void OnClientConnected()
+        {
+            // KCP 连接就绪 → 传输层可用（SendFromClient 不再静默丢弃）→ 通知运行时发起握手
+            ClientReady?.Invoke();
         }
 
         public void Stop()
         {
             if (_clientUp) { NetworkClient.Shutdown(); _clientUp = false; }
+            NetworkClient.OnConnectedEvent -= OnClientConnected;
             if (_serverUp) { NetworkServer.Shutdown(); _serverUp = false; }
             _connections.Clear();
         }

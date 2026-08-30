@@ -6,31 +6,37 @@ using Game.Mod.Runtime;
 
 namespace Com.Game.Network
 {
-    /// <summary>协议注册表条目（§11.6）。</summary>
-    internal sealed class ProtocolEntry
-    {
-        public ProtocolId Id;
-        public ModId Owner;
-        public INetworkProtocol Protocol = null!;
-        public INetworkHandler? Handler;
-    }
-
     /// <summary>
-    /// 网络运行时实现（§11.2）：协议注册表 / 路由 / 方向与版本校验 / 分包帧 / 统计。
+    /// 网络运行时实现（§11.2）：编排器——生命周期（Start/Stop/AttachTransport）、
+    /// 公开 API 路由（注册/发送/统计）、Dispatch 顶层控制流。
+    /// 五层各自独立：ProtocolRegistry（注册表 + legacy codec）/ FrameCodec（12B 帧头）/
+    /// NegotiationLayer（§11.6 版本协商）/ InterestManager（§11.8 兴趣过滤）。
     /// 硬边界：可以路由任何协议，但绝不拥有任何 Gameplay Protocol（§11.1）——
     /// 只认识 ProtocolId / Version / Encode / Decode / Handler / OwnerMod。
     /// </summary>
     public sealed class NetworkRuntimeImpl : INetworkRuntime, INetworkRuntimeDiagnostics
     {
         /// <summary>帧头：[ProtocolId u32][Ver u16][Flags u16][Payload Len u32]（§11.5）。</summary>
-        public const int FrameHeaderSize = 12;
+        public const int FrameHeaderSize = FrameCodec.FrameHeaderSize;
 
-        private readonly Dictionary<ProtocolId, ProtocolEntry> _protocols = new();
+        private readonly ProtocolRegistry _registry = new();
+        private readonly FrameCodec _codec = new();
         private readonly NetworkStats _stats = new();
+        private readonly InterestManager _interest = new();
+        private readonly NegotiationLayer _negotiation;
+
         private INetworkTransport? _transport;
+
+        public NetworkRuntimeImpl()
+        {
+            _negotiation = new NegotiationLayer(_registry, this);
+        }
 
         public NetworkRole Role { get; private set; }
         public bool IsActive { get; private set; }
+
+        /// <summary>版本协商层（§11.6）：引导/测试装配 RequiredMods 等策略。</summary>
+        public NegotiationLayer Negotiation => _negotiation;
 
         /// <summary>ECS Replication 运行时（由 NetworkMod 装配，§11.10）。</summary>
         public ReplicationRuntime? Replication { get; set; }
@@ -44,6 +50,7 @@ namespace Com.Game.Network
             _transport = transport;
             _transport.ReceivedOnClient += OnClientFrame;
             _transport.ReceivedOnServer += OnServerFrame;
+            _transport.ClientReady += OnClientReady;
             if (IsActive) StartTransportEndpoints();
         }
 
@@ -52,6 +59,7 @@ namespace Com.Game.Network
             if (_transport is null) return;
             _transport.ReceivedOnClient -= OnClientFrame;
             _transport.ReceivedOnServer -= OnServerFrame;
+            _transport.ClientReady -= OnClientReady;
             _transport = null;
         }
 
@@ -59,6 +67,7 @@ namespace Com.Game.Network
         {
             Role = config.Role;
             IsActive = true;
+            RegisterHandshakeProtocols(); // 握手协议自我注册（§11.6，不依赖 NetworkMod 装配顺序）
             if (_transport is not null) StartTransportEndpoints();
         }
 
@@ -66,6 +75,14 @@ namespace Com.Game.Network
         {
             IsActive = false;
             _transport?.Stop();
+            _negotiation.Reset(); // 连接状态清零（支持重启）
+        }
+
+        /// <summary>客户端传输就绪 → 发起版本协商握手（§11.6）。</summary>
+        private void OnClientReady()
+        {
+            if (!IsActive) return;
+            _negotiation.SendHello();
         }
 
         private void StartTransportEndpoints()
@@ -75,40 +92,43 @@ namespace Com.Game.Network
             if (Role is NetworkRole.Host or NetworkRole.Client) _transport!.StartClient();
         }
 
+        private void RegisterHandshakeProtocols()
+        {
+            if (_registry.IsRegistered(NegotiationLayer.HelloId)) return;
+            _registry.Register(NetworkMod.ModIdValue, new HandshakeHelloProtocol(),
+                new HandshakeHelloHandler(_negotiation));
+            _registry.Register(NetworkMod.ModIdValue, new HandshakeResultProtocol(),
+                new HandshakeResultHandler(_negotiation));
+        }
+
         // ---- 协议注册（§11.6：生命周期与 Mod 严格一致） ----
 
-        public void RegisterProtocol(ModId owner, INetworkProtocol protocol, INetworkHandler? handler)
-        {
-            if (protocol is null) throw new ArgumentNullException(nameof(protocol));
-            if (_protocols.TryGetValue(protocol.Id, out var existing))
-            {
-                if (existing.Owner != owner)
-                    throw new NetworkException(
-                        $"协议 ID {protocol.Id} 冲突: '{owner}' 与 '{existing.Owner}'（构建期查重漏网，§11.5）");
-                return; // 幂等
-            }
-            _protocols[protocol.Id] = new ProtocolEntry
-            {
-                Id = protocol.Id,
-                Owner = owner,
-                Protocol = protocol,
-                Handler = handler,
-            };
-        }
+        public void RegisterProtocol(ModId owner, INetworkProtocol protocol, INetworkHandler? handler) =>
+            _registry.Register(owner, protocol, handler);
 
-        public void UnregisterProtocol(ModId owner, ProtocolId id)
-        {
-            if (_protocols.TryGetValue(id, out var entry) && entry.Owner == owner)
-                _protocols.Remove(id);
-        }
+        public void UnregisterProtocol(ModId owner, ProtocolId id) => _registry.Unregister(owner, id);
 
         public void UnregisterAll(ModId owner)
         {
-            var stale = new List<ProtocolId>();
-            foreach (var (id, entry) in _protocols)
-                if (entry.Owner == owner) stale.Add(id);
-            foreach (var id in stale) _protocols.Remove(id);
+            _registry.UnregisterAll(owner); // 含 legacy codecs（Rule 20）
+            _interest.UnregisterAll(owner); // 兴趣钩子一并清理（Rule 20）
             Replication?.UnregisterAll(owner); // 复制注册与副本实体一并清理（§11.10）
+        }
+
+        public void RegisterLegacyCodec(ModId owner, ProtocolId id, ushort version, INetworkProtocol codec) =>
+            _registry.RegisterLegacyCodec(owner, id, version, codec);
+
+        public void RegisterInterest(ModId owner, ProtocolId pid, IInterestManager? manager)
+        {
+            if (manager is not null)
+            {
+                if (!_registry.TryGet(pid, out var entry))
+                    throw new NetworkException($"协议 {pid} 未注册");
+                if (entry.Owner != owner)
+                    throw new NetworkException(
+                        $"Mod '{owner}' 不能为其他 Mod 的协议 {pid} 注册兴趣（归属 '{entry.Owner}'，§11.8）");
+            }
+            _interest.Register(owner, pid, manager);
         }
 
         // ---- ECS Replication（§11.10，委托 ReplicationRuntime） ----
@@ -148,22 +168,23 @@ namespace Com.Game.Network
             return Replication is not null && Replication.TryGetServerEntity(networkId, out entity);
         }
 
-        public bool IsRegistered(ProtocolId id) => _protocols.ContainsKey(id);
+        public bool IsRegistered(ProtocolId id) => _registry.IsRegistered(id);
 
         public int ProtocolCountOf(ModId owner)
         {
             var n = 0;
-            foreach (var entry in _protocols.Values)
+            foreach (var entry in _registry.All)
                 if (entry.Owner == owner) n++;
             return n;
         }
 
-        // ---- 发送（§11.7：通信方向由 API 形态强制 + 归属校验） ----
+        // ---- 发送（§11.7：通信方向由 API 形态强制 + 归属校验；§1.2 发送管线） ----
 
         public void SendToServer(ModId sender, ProtocolId id, object message)
         {
             var entry = ValidateSend(sender, id, NetworkDirection.ClientToServer);
-            var frame = EncodeFrame(entry, message);
+            _negotiation.ValidateSend(NegotiationLayer.ClientConnId, id); // 未协商/拒绝/禁用 → 抛（§11.6）
+            var frame = EncodeFrame(entry, entry.Protocol, message, entry.Protocol.Version); // 客户端恒发自身注册版本
             _transport!.SendFromClient(frame);
             CountSend(entry, frame.Length);
         }
@@ -171,7 +192,9 @@ namespace Com.Game.Network
         public void SendToClient(ModId sender, int connectionId, ProtocolId id, object message)
         {
             var entry = ValidateSend(sender, id, NetworkDirection.ServerToClient);
-            var frame = EncodeFrame(entry, message);
+            if (!_negotiation.CanDeliver(connectionId, id)) return; // 未协商/禁用连接不发（§11.6）
+            var (version, codec) = _negotiation.SelectSendCodec(connectionId, id, entry);
+            var frame = EncodeFrame(entry, codec, message, version);
             _transport!.SendFromServerTo(connectionId, frame);
             CountSend(entry, frame.Length);
         }
@@ -179,8 +202,22 @@ namespace Com.Game.Network
         public void Broadcast(ModId sender, ProtocolId id, object message)
         {
             var entry = ValidateSend(sender, id, NetworkDirection.ServerToClient);
-            var frame = EncodeFrame(entry, message);
-            _transport!.SendFromServerAll(frame);
+
+            // §1.2 步骤②③：候选连接 = 已协商 ∧ 未禁用 ∧ 兴趣放行——过滤在 Encode 之前（省带宽）
+            var candidates = new List<int>();
+            foreach (var connId in _transport!.ServerConnections)
+            {
+                if (!_negotiation.CanDeliver(connId, id)) continue;
+                if (!_interest.IsRelevant(connId, id, in message)) continue;
+                candidates.Add(connId);
+            }
+            if (candidates.Count == 0) return;
+
+            // 帧只 Encode 一次（§1.2：逐连接只多一次发送；多连接版本不一致由协商保证收敛到共同版本）
+            var (version, codec) = _negotiation.SelectSendCodec(candidates[0], id, entry);
+            var frame = EncodeFrame(entry, codec, message, version);
+            foreach (var connId in candidates)
+                _transport!.SendFromServerTo(connId, frame);
             CountSend(entry, frame.Length);
         }
 
@@ -188,38 +225,23 @@ namespace Com.Game.Network
         {
             if (!IsActive) throw new NetworkException("网络未启动");
             if (_transport is null) throw new NetworkException("未接入传输提供者（AttachTransport）");
-            if (!_protocols.TryGetValue(id, out var entry))
-                throw new NetworkException($"协议 {id} 未注册");
-            if (entry.Owner != sender)
-                throw new NetworkException($"Mod '{sender}' 不能发送其他 Mod 的协议 {id}（归属 '{entry.Owner}'）");
-            if (entry.Protocol.Direction != direction)
-                throw new NetworkException($"协议 {id} 方向为 {entry.Protocol.Direction}，不能以 {direction} 发送");
-            return entry;
+            return _registry.ValidateSend(sender, id, direction);
         }
 
-        private byte[] EncodeFrame(ProtocolEntry entry, object message)
+        private byte[] EncodeFrame(ProtocolEntry entry, INetworkProtocol codec, object message, ushort version)
         {
-            var writer = new PayloadWriter();
-            entry.Protocol.Encode(in message, writer);
-            var payload = writer.ToBuffer();
-
-            if (payload.Length > entry.Protocol.MaxSize)
+            try
             {
-                _stats.DroppedQuota++;
-                throw new NetworkException(
-                    $"协议 {entry.Id} 载荷 {payload.Length}B 超 MaxSize {entry.Protocol.MaxSize}B（§11.12 UGC 防护）");
+                return _codec.Encode(entry.Id, codec, in message, version);
             }
-
-            var frame = new byte[FrameHeaderSize + payload.Length];
-            WriteU32(frame, 0, entry.Id.Value);
-            WriteU16(frame, 4, entry.Protocol.Version);
-            WriteU16(frame, 6, 0); // Flags
-            WriteU32(frame, 8, (uint)payload.Length);
-            Array.Copy(payload.Data, payload.Offset, frame, FrameHeaderSize, payload.Length);
-            return frame;
+            catch (NetworkException)
+            {
+                _stats.DroppedQuota++; // §11.12 UGC 防护：超 MaxSize 丢弃并记违规
+                throw;
+            }
         }
 
-        // ---- 接收（§11.9 接收管线：校验 → Decode → Router → Handler） ----
+        // ---- 接收（§1.3 接收管线：帧头 → 协商校验 → Registry 校验 → codec 选择 → Decode → Handler） ----
 
         private void OnServerFrame(int connectionId, byte[] frame) =>
             Dispatch(frame, new NetworkContext(connectionId, isServer: true));
@@ -229,24 +251,18 @@ namespace Com.Game.Network
 
         private void Dispatch(byte[] frame, in NetworkContext context)
         {
-            _stats.BytesReceived += frame.Length;
-            if (frame.Length < FrameHeaderSize)
+            if (!_codec.TryParseHeader(frame, out var id, out var version, out var payloadOffset, out var payloadLen))
             {
                 _stats.DroppedInvalid++;
                 return;
             }
 
-            var id = new ProtocolId(ReadU32(frame, 0));
-            var version = ReadU16(frame, 4);
-            var len = (int)ReadU32(frame, 8);
-            if (len < 0 || FrameHeaderSize + len > frame.Length)
-            {
-                _stats.DroppedInvalid++;
-                return;
-            }
+            // 基础设施（握手）帧不计入业务统计（§11.13 业务口径：既有测试对精确计数的断言不受握手污染）
+            var isHandshake = NegotiationLayer.IsHandshake(id);
+            if (!isHandshake) _stats.BytesReceived += frame.Length;
 
-            // Registry 校验：Owner / Direction / Version（§11.9）
-            if (!_protocols.TryGetValue(id, out var entry))
+            // Registry 校验：Owner / Direction（§11.9）
+            if (!_registry.TryGet(id, out var entry))
             {
                 _stats.DroppedInvalid++; // 在途包无法归属（§11.14）
                 return;
@@ -257,22 +273,30 @@ namespace Com.Game.Network
                 _stats.DroppedInvalid++; // 方向不符（C2S 只能在 Server 侧收，S2C 只能在 Client 侧收）
                 return;
             }
-            if (entry.Protocol.Version != version)
+
+            // 协商校验（§11.6）：握手帧放行；未协商 / 拒绝 / 禁用 → drop（防御：握手完成前业务流量不可注入）
+            if (!_negotiation.ValidateReceive(context.ConnectionId, id, out var expectedVersion))
             {
-                _stats.DroppedInvalid++; // 协议废弃窗口：只保留当前版本（§11.6）
+                _stats.DroppedNotNegotiated++;
                 return;
             }
-            if (len > entry.Protocol.MaxSize)
+            if (version != expectedVersion)
+            {
+                _stats.DroppedInvalid++; // 协议废弃窗口：版本不匹配（§11.6）
+                return;
+            }
+            if (payloadLen > entry.Protocol.MaxSize)
             {
                 _stats.DroppedInvalid++;
                 return;
             }
 
-            var payload = new PayloadBuffer(frame, FrameHeaderSize, len);
+            var codec = _negotiation.SelectReceiveCodec(context.ConnectionId, id, entry, expectedVersion);
+            var payload = new PayloadBuffer(frame, payloadOffset, payloadLen);
             object message;
             try
             {
-                message = entry.Protocol.Decode(new PayloadReader(in payload));
+                message = codec.Decode(new PayloadReader(in payload));
             }
             catch (Exception)
             {
@@ -280,7 +304,7 @@ namespace Com.Game.Network
                 return;
             }
 
-            _stats.MessagesReceived++;
+            if (!isHandshake) _stats.MessagesReceived++;
             entry.Handler?.Handle(in context, in message);
         }
 
@@ -290,6 +314,7 @@ namespace Com.Game.Network
 
         private void CountSend(ProtocolEntry entry, int bytes)
         {
+            if (NegotiationLayer.IsHandshake(entry.Id)) return; // 握手/基础设施帧不计业务统计
             _stats.BytesSent += bytes;
             _stats.MessagesSent++;
             _stats.BytesByMod.TryGetValue(entry.Owner, out var m);
@@ -297,24 +322,33 @@ namespace Com.Game.Network
             _stats.MessagesByProtocol.TryGetValue(entry.Id, out var p);
             _stats.MessagesByProtocol[entry.Id] = p + 1;
         }
+    }
 
-        private static void WriteU16(byte[] d, int o, ushort v)
+    /// <summary>握手 hello 帧处理器：服务器侧收到客户端协议表 → 交集计算并回 result（§11.6）。</summary>
+    public sealed class HandshakeHelloHandler : INetworkHandler
+    {
+        private readonly NegotiationLayer _negotiation;
+
+        public HandshakeHelloHandler(NegotiationLayer negotiation) => _negotiation = negotiation;
+
+        public void Handle(in NetworkContext context, in object message)
         {
-            d[o] = (byte)(v & 0xFF);
-            d[o + 1] = (byte)((v >> 8) & 0xFF);
+            if (!context.IsServer) return;
+            _negotiation.OnServerHello(context.ConnectionId, (HandshakeHello)message);
         }
+    }
 
-        private static void WriteU32(byte[] d, int o, uint v)
+    /// <summary>握手 result 帧处理器：客户端侧收到协商结果 → 应用（§11.6）。</summary>
+    public sealed class HandshakeResultHandler : INetworkHandler
+    {
+        private readonly NegotiationLayer _negotiation;
+
+        public HandshakeResultHandler(NegotiationLayer negotiation) => _negotiation = negotiation;
+
+        public void Handle(in NetworkContext context, in object message)
         {
-            d[o] = (byte)(v & 0xFF);
-            d[o + 1] = (byte)((v >> 8) & 0xFF);
-            d[o + 2] = (byte)((v >> 16) & 0xFF);
-            d[o + 3] = (byte)((v >> 24) & 0xFF);
+            if (context.IsServer) return;
+            _negotiation.OnClientResult((HandshakeResult)message);
         }
-
-        private static ushort ReadU16(byte[] d, int o) => (ushort)(d[o] | (d[o + 1] << 8));
-
-        private static uint ReadU32(byte[] d, int o) =>
-            (uint)(d[o] | (d[o + 1] << 8) | (d[o + 2] << 16) | (d[o + 3] << 24));
     }
 }
