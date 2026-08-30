@@ -49,6 +49,17 @@ samples/MirrorUnityFPS/
 └── assets/                复刻用占位美术（可选，能跑通机制即可）
 ```
 
+## 资源归属硬规则（Rule 3 / §8.4）
+
+**所有 Mod 内部的资源必须通过所属 Mod 提供加载与管理**：
+
+1. 资源打包进所属 Mod 自己的 `assets/`（→ 该 Mod 的 AssetBundle，见 §15.1）；
+2. Mod 只能经自己的 `context.Resources.Load(AssetId "本Mod:路径")` 加载，不能 `Resources.Load` /
+   `AssetDatabase.LoadAssetAtPath` / 直接 `File.ReadAllBytes` 访问资源文件（§8.3）；
+3. 跨 Mod 默认禁止直接访问资源（`Weapon ─X─► Vehicle/super_car.prefab`）；确需时只能走能力/服务
+   （§8.4：`Resolve` 受限解析或对方导出的资源能力），且消费方应在 Manifest 声明依赖；
+4. 资源生命周期归属 ModObject：卸载时整域释放（§8.8，AssetBundle 后端整域卸载）。
+
 ## 复刻工程的约束
 
 1. **复刻 Mod 与 `mods/` 创作空间同构**：同样的 `mod.json + src/ + data/` 布局，同样的构建方式（构建脚本按目录扫描，见下）。

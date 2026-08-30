@@ -31,6 +31,12 @@ namespace Game.Mod.Contract
         /// Unload 直接拒绝，退出游戏 UnloadAll 时跳过（随进程生命周期存活）。</summary>
         public bool Pinned { get; set; }
 
+        /// <summary>资源包声明（§15.1：assets.bundles）。资源只能经所属 Mod 的 ResourceScope 加载（Rule 3 / §8.4）。</summary>
+        public List<string> AssetBundles { get; set; } = new();
+
+        /// <summary>默认资源包名（未声明时按约定 `{modId}.bundle`）。</summary>
+        public string DefaultBundleName => AssetBundles.Count > 0 ? AssetBundles[0] : $"{ModId.Value}.bundle";
+
         public List<ModDependency> Dependencies { get; set; } = new();
 
         /// <summary>协议声明清单（供协商与查重，§15.4）。</summary>
@@ -112,6 +118,14 @@ namespace Game.Mod.Contract
                                     m.Protocols.Add(ParseProtocol(p));
                         }
                         break;
+                    case "assets":
+                        foreach (var a in kv.Value.AsObject)
+                        {
+                            if (a.Key == "bundles")
+                                foreach (var b in a.Value.AsArray)
+                                    m.AssetBundles.Add(b.AsString);
+                        }
+                        break;
                     case "files":
                         foreach (var f in kv.Value.AsArray)
                             m.Files.Add(ParseFile(f));
@@ -165,6 +179,16 @@ namespace Game.Mod.Contract
                     deps.Add(JsonValue.NewObject(obj));
                 }
                 root["dependencies"] = JsonValue.NewArray(deps);
+            }
+
+            if (AssetBundles.Count > 0)
+            {
+                var bundles = new List<JsonValue>();
+                foreach (var b in AssetBundles) bundles.Add(JsonValue.Of(b));
+                root["assets"] = JsonValue.NewObject(new Dictionary<string, JsonValue>
+                {
+                    ["bundles"] = JsonValue.NewArray(bundles),
+                });
             }
 
             if (Protocols.Count > 0)

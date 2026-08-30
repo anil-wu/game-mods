@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.IO;
+using Game.Mod.Contract;
 using Game.Mod.Runtime;
 using UnityEngine;
 
@@ -51,8 +52,9 @@ namespace Game.Runtime
             if (_bundles.TryGetValue(contentRoot, out var existing))
                 return existing;
 
-            var modId = Path.GetFileName(contentRoot.TrimEnd(Path.DirectorySeparatorChar));
-            var bundlePath = Path.Combine(contentRoot, $"{modId}.bundle");
+            // 资源包名以所属 Mod 的 manifest 声明为准（§15.1 assets.bundles；默认 {modId}.bundle）
+            var bundleName = ResolveBundleName(contentRoot);
+            var bundlePath = Path.Combine(contentRoot, bundleName);
             if (!File.Exists(bundlePath))
             {
                 Debug.LogWarning($"[AssetBundleBackend] 未找到 Mod 资源包: {bundlePath}");
@@ -67,6 +69,18 @@ namespace Game.Runtime
             }
             _bundles[contentRoot] = bundle;
             return bundle;
+        }
+
+        private static string ResolveBundleName(string contentRoot)
+        {
+            var manifestPath = Path.Combine(contentRoot, "manifest.json");
+            if (File.Exists(manifestPath))
+            {
+                try { return ModManifest.Parse(File.ReadAllText(manifestPath)).DefaultBundleName; }
+                catch { /* 坏清单回退到约定名 */ }
+            }
+            var modId = Path.GetFileName(contentRoot.TrimEnd(Path.DirectorySeparatorChar));
+            return $"{modId}.bundle";
         }
     }
 }

@@ -166,6 +166,23 @@ namespace TestRunner
         }
 
         [Test]
+        public static void Manifest_Assets_RoundTrip()
+        {
+            // 资源包声明（§15.1 assets.bundles）：资源只能经所属 Mod 的 ResourceScope 加载（Rule 3/§8.4）
+            var m = ModManifest.Parse(@"{ ""id"": ""com.fps.weapon"", ""version"": ""0.1.0"",
+  ""modules"": { ""shared"": ""x.dll"" },
+  ""assets"": { ""bundles"": [""com.fps.weapon.bundle""] } }");
+            Assert.Equal(1, m.AssetBundles.Count);
+            Assert.Equal("com.fps.weapon.bundle", m.DefaultBundleName);
+            Assert.Equal("com.fps.weapon.bundle", ModManifest.Parse(m.ToJson()).DefaultBundleName);
+
+            // 未声明 → 约定名 {modId}.bundle
+            var plain = ModManifest.Parse(@"{ ""id"": ""com.fps.npc"", ""version"": ""0.1.0"",
+  ""modules"": { ""shared"": ""x.dll"" } }");
+            Assert.Equal("com.fps.npc.bundle", plain.DefaultBundleName);
+        }
+
+        [Test]
         public static void Manifest_Pinned_RoundTrip()
         {
             // 主 Mod 标记（§10.4）：默认 false，序列化往返保持
