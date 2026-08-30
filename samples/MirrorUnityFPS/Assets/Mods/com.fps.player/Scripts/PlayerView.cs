@@ -34,13 +34,10 @@ namespace Com.Fps.Player
             floor.transform.localScale = new Vector3(2f, 1f, 2f);
             floor.GetComponent<Renderer>().material.color = new Color(0.28f, 0.32f, 0.28f);
 
+            // 相机由宿主引导层创建（含 URP UniversalAdditionalCameraData），Mod 视图只消费 Camera.main
             _camera = Camera.main;
             if (_camera is null)
-            {
-                var go = new GameObject("FpsCamera");
-                _camera = go.AddComponent<Camera>();
-                go.AddComponent<AudioListener>();
-            }
+                Debug.LogWarning("[PlayerView] Camera.main 为空（宿主应创建 URP 主相机）");
         }
 
         private void Update()
@@ -138,9 +135,14 @@ namespace Com.Fps.Player
         private static GameObject? LoadPrefab(AssetId id)
         {
             var ctx = PlayerMod.Context;
-            if (ctx is null) return null;
-            try { return ctx.Resources.Load(id) as GameObject; }
-            catch (System.Exception) { return null; }
+            if (ctx is null) { Debug.LogWarning($"[PlayerView] Context 未就绪，加载失败 {id}"); return null; }
+            try
+            {
+                var obj = ctx.Resources.Load(id) as GameObject;
+                Debug.Log(obj is null ? $"[PlayerView] 加载失败（回退胶囊体）{id}" : $"[PlayerView] 加载成功 {id}");
+                return obj;
+            }
+            catch (System.Exception e) { Debug.LogError($"[PlayerView] 加载异常 {id}: {e.Message}"); return null; }
         }
 
         private void OnGUI()

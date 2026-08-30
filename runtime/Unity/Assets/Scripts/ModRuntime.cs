@@ -20,6 +20,10 @@ namespace Game.Runtime
             // 资源后端 = AssetBundle（Mod 自带 assets，§8.2/§15.1）
             Host = new ModRuntimeHost(RuntimeRole.Host, new UnityLog(),
                 resourceBackend: new UnityAssetBundleBackend());
+
+            // URP 主相机（宿主层创建，含 UniversalAdditionalCameraData——否则 URP 整屏洋红；
+            // Mod 视图只消费 Camera.main，不依赖 URP 程序集）
+            EnsureUrpMainCamera();
             Host.Manager.ModLoaded += InstantiateViews;
             Host.Manager.ModUnloaded += DestroyViews;
 
@@ -44,6 +48,18 @@ namespace Game.Runtime
             driver.AddComponent<ModRuntimeDriver>();
 
             Initialized = errors.Count == 0;
+        }
+
+        /// <summary>创建 URP 就绪的主相机（若场景无相机）。</summary>
+        private static void EnsureUrpMainCamera()
+        {
+            if (Camera.main is not null) return;
+            var go = new GameObject("Main Camera");
+            go.tag = "MainCamera";
+            go.AddComponent<Camera>();
+            go.AddComponent<UnityEngine.Rendering.Universal.UniversalAdditionalCameraData>();
+            go.AddComponent<AudioListener>();
+            Debug.Log("[ModRuntime] 已创建 URP 主相机");
         }
 
         /// <summary>视图归属 ModObject：实例化按 Mod 追踪，卸载即销毁（热卸载不残留野视图）。</summary>
