@@ -1,20 +1,44 @@
 using System.Collections.Generic;
+using Game.Mod.Contract;
 using UnityEngine;
 
 namespace Com.Fps.Weapon
 {
     /// <summary>
-    /// 武器视图（MonoBehaviour，代码原语）：准星 + 弹药 HUD + 开火/换弹输入 + 弹道线。
+    /// 武器视图（忠实资源版）：第一人称枪模（经所属 Mod ResourceScope 加载）+ 准星 + 弹药 HUD + 弹道线。
     /// 表现只读复制/事件状态，权威判定在 Server（§11.10）。
     /// </summary>
     public sealed class WeaponView : MonoBehaviour
     {
         private static readonly FireProtocol FireProto = new();
         private static readonly ReloadProtocol ReloadProto = new();
+        private static readonly AssetId FpsPistol = new(WeaponMod.ModIdValue,
+            "Content/Weapon/Range/Pistol/Prefab/Pistol FPS Local");
 
         private float _clientFireCooldown;
         private long _seenShotTicks;
+        private GameObject? _heldWeapon;
         private readonly List<(LineRenderer Line, float Ttl)> _tracers = new();
+
+        private void Start()
+        {
+            try
+            {
+                if (WeaponMod.Context?.Resources.Load(FpsPistol) is GameObject prefab)
+                    _heldWeapon = Instantiate(prefab);
+            }
+            catch (System.Exception) { }
+        }
+
+        private void LateUpdate()
+        {
+            // 枪模挂到相机下（第一人称）
+            if (_heldWeapon is not null && Camera.main is not null)
+            {
+                _heldWeapon.transform.SetParent(Camera.main.transform, false);
+                _heldWeapon.transform.localPosition = new Vector3(0.25f, -0.2f, 0.5f);
+            }
+        }
 
         private void Update()
         {

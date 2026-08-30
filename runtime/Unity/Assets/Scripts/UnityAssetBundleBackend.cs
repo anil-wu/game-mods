@@ -23,14 +23,19 @@ namespace Game.Runtime
             var key = localPath.Replace('/', Path.DirectorySeparatorChar);
             var withoutExt = key.Contains('.') ? key.Substring(0, key.LastIndexOf('.')) : key;
             // Unity 的 bundle 资源名全小写（相对 Assets 的项目路径去扩展名）
-            return $"assets/modassets/{modId}/{withoutExt}".ToLowerInvariant();
+            return $"assets/mods/{modId}/{withoutExt}".ToLowerInvariant();
         }
 
         public object? Load(string contentRoot, string localPath)
         {
             var bundle = GetBundle(contentRoot);
             if (bundle is null) return null;
-            return bundle.LoadAsset(AssetName(contentRoot, localPath));
+            // 新复刻结构 assets/mods/{modId}/…；兼容旧的 assets/modassets/{modId}/…
+            var name = AssetName(contentRoot, localPath);
+            var asset = bundle.LoadAsset(name);
+            if (asset is null)
+                asset = bundle.LoadAsset(name.Replace("assets/mods/", "assets/modassets/"));
+            return asset;
         }
 
         public void Release(object resource)

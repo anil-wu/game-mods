@@ -18,6 +18,9 @@ public static class ModPacker
         if (string.IsNullOrEmpty(outputRoot))
             outputRoot = Path.GetFullPath(Path.Combine(Application.dataPath, "..", "..", "..", "dist", "mods"));
 
+        // URP/HDRP/ShaderGraph 材质 → 内置 Standard（原工程材质 shader 不兼容，重建为等价）
+        ConvertUrpMaterialsToBuiltin();
+
         var modJsonFiles = Directory.GetFiles("Assets/Mods", "mod.json", SearchOption.AllDirectories)
             .Where(p => p.Replace('\\', '/').StartsWith("Assets/Mods/"))
             .OrderBy(p => p)
@@ -72,5 +75,48 @@ public static class ModPacker
         File.Copy(Path.Combine(modDir, "mod.json"), Path.Combine(outDir, "manifest.json"), overwrite: true);
 
         Debug.Log($"[ModPacker] 打包 {modId} → {outDir}");
+    }
+
+    /// <summary>URP/HDRP/ShaderGraph 材质 → 内置 Standard，映射常用纹理/颜色属性。</summary>
+    private static void ConvertUrpMaterialsToBuiltin()
+    {
+        var converted = 0;
+        foreach (var guid in AssetDatabase.FindAssets("t:Material", new[] { "Assets/Mods" }))
+        {
+            var path = AssetDatabase.GUIDToAssetPath(guid);
+            var mat = AssetDatabase.LoadAssetAtPath<Material>(path);
+            if (mat is null) continue;
+            var shaderName = mat.shader?.name ?? "";
+            if (!IsUrpShader(shaderName)) continue;
+
+            var baseMap = mat.HasProperty("_BaseMap") ? mat.GetTexture("_BaseMap") : null;
+            var baseColor = mat.HasProperty("_BaseColor") ? mat.GetColor("_BaseColor") : Color.white;
+            var bumpMap = mat.HasProperty("_BumpMap") ? mat.GetTexture("_BumpMap") : null;
+            var metallicGloss = mat.HasProperty("_MetallicGlossMap") ? mat.GetTexture("_MetallicGlossMap") : null;
+            var occlusion = mat.HasProperty("_OcclusionMap") ? mat.GetTexture("_OcclusionMap") : null;
+
+            mat.shader = Shader.Find("Standard");
+            if (baseMap is not null) mat.SetTexture("_MainTex", baseMap);
+            if (bumpMap is not null) mat.SetTexture("_BumpMap", bumpMap);
+            if (metallicGloss is not null) mat.SetTexture("_MetallicGlossMap", metallicGloss);
+            if (occlusion is not null) mat.SetTexture("_OcclusionMap", occlusion);
+            if (mat.HasProperty("_Color")) mat.SetColor("_Color", baseColor);
+            EditorUtility.SetDirty(mat);
+            converted++;
+        }
+        if (converted > 0)
+        {
+            AssetDatabase.SaveAssets();
+            Debug.Log($"[ModPacker] 材质转换 {converted} 个 → 内置管线 Standard");
+        }
+    }
+
+    private static bool IsUrpShader(string shaderName)
+    {
+        if (shaderName.Contains("Universal")) return true;
+        if (shaderName.Contains("HDRP")) return true;
+        if (shaderName.Contains("Shader Graph")) return true;
+        if (shaderName.Contains("Lit")) return true;
+        return false;
     }
 }

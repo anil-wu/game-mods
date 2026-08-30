@@ -15,8 +15,12 @@ namespace Com.Fps.MapGen
         /// <summary>客户端收到的 seed（视图渲染数据源）。</summary>
         public static int ClientSeed { get; private set; } = DefaultSeed;
 
+        /// <summary>静态桥（视图加载资源用）。</summary>
+        public static IModContext Context { get; private set; } = null!;
+
         public void Register(IModContext context)
         {
+            Context = context;
             ClientSeed = DefaultSeed;
 
             if (context.HasServer)
@@ -33,6 +37,7 @@ namespace Com.Fps.MapGen
 
         public void Unregister(IModContext context)
         {
+            Context = null!;
             ClientSeed = DefaultSeed;
         }
 
