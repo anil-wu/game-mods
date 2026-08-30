@@ -61,6 +61,9 @@ namespace Com.Game.ModStore
                 var m = ModManifest.Parse(File.ReadAllText(manifestPath));
                 foreach (var module in m.ModulesFor(true, true))
                     if (!File.Exists(Path.Combine(dir, module))) return false;
+                // 声明的资源包必须在位（防止 bundle 缺失被版本相等跳过）
+                foreach (var bundle in m.AssetBundles)
+                    if (!File.Exists(Path.Combine(dir, bundle))) return false;
                 return true;
             }
             catch { return false; }

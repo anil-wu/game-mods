@@ -1,4 +1,5 @@
 using Game.Mod.Contract;
+using Microsoft.AspNetCore.Http.Features;
 using ModServer.Registry;
 
 // ---------- 配置 ----------
@@ -7,6 +8,12 @@ var packagesDir = Environment.GetEnvironmentVariable("MOD_PACKAGES_DIR")
 var registry = new ModRegistry(packagesDir);
 
 var builder = WebApplication.CreateBuilder(args);
+
+// 大包上传：Kestrel 默认请求体 30MB，Mod 资源包可达数百 MB（§15.1 assets）
+const long maxBytes = 512L * 1024 * 1024;
+builder.WebHost.ConfigureKestrel(o => o.Limits.MaxRequestBodySize = maxBytes);
+builder.Services.Configure<FormOptions>(o => o.MultipartBodyLengthLimit = maxBytes);
+
 var app = builder.Build();
 
 // ---------- 上传 ----------
@@ -15,7 +22,6 @@ app.MapPost("/api/mods", async (IFormFile file) =>
     if (file is null || file.Length == 0)
         return Results.BadRequest(new { error = "缺少文件" });
 
-    const long maxBytes = 512L * 1024 * 1024;
     if (file.Length > maxBytes)
         return Results.BadRequest(new { error = "文件过大" });
 

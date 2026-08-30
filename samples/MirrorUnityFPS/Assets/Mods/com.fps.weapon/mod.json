@@ -53,5 +53,10 @@
       }
     ]
   },
-  "boot": false
+  "boot": false,
+  "assets": {
+    "bundles": [
+      "com.fps.weapon.bundle"
+    ]
+  }
 }

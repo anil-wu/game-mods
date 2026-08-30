@@ -24,5 +24,10 @@
       }
     ]
   },
-  "boot": false
+  "boot": false,
+  "assets": {
+    "bundles": [
+      "com.fps.mapgen.bundle"
+    ]
+  }
 }
