@@ -31,3 +31,4 @@ runtime/Unity/Assets/Mirror/
 runtime/Unity/Assets/Mirror.meta
 
 *.log
+replica_projects/*
