@@ -106,6 +106,9 @@ namespace Game.Mod.Runtime
             foreach (var (id, entry) in _loaded)
                 _backend.Release(entry.Resource);
             _loaded.Clear();
+            // 整域释放（§8.8）：AssetBundle 后端卸载整个 Bundle
+            if (_backend is IScopedResourceBackend scoped && _contentRoot is not null)
+                scoped.ReleaseScope(_contentRoot);
         }
 
         // ---- 内部 ----

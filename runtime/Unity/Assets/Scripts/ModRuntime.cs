@@ -16,8 +16,10 @@ namespace Game.Runtime
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void Bootstrap()
         {
-            // Host 角色：同时运行 Client + Server 两套逻辑（§6/§11.3）
-            Host = new ModRuntimeHost(RuntimeRole.Host, new UnityLog());
+            // Host 角色：同时运行 Client + Server 两套逻辑（§6/§11.3）；
+            // 资源后端 = AssetBundle（Mod 自带 assets，§8.2/§15.1）
+            Host = new ModRuntimeHost(RuntimeRole.Host, new UnityLog(),
+                resourceBackend: new UnityAssetBundleBackend());
             Host.Manager.ModLoaded += InstantiateViews;
             Host.Manager.ModUnloaded += DestroyViews;
 

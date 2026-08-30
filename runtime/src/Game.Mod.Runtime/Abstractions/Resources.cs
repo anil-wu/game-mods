@@ -35,7 +35,7 @@ namespace Game.Mod.Runtime
 
     /// <summary>
     /// 资源后端：真正的加载机制由平台/管线提供（§8.2 Mod 自治）。
-    /// 默认实现为文件后端（Mod 包内数据文件）；Unity 侧可换成 Addressables / Bundle。
+    /// 默认实现为文件后端（Mod 包内数据文件）；Unity 侧换成 AssetBundle 后端（§15.1 assets）。
     /// </summary>
     public interface IResourceBackend
     {
@@ -44,5 +44,15 @@ namespace Game.Mod.Runtime
 
         /// <summary>释放底层资源（文件后端无操作；Unity 后端释放 Unity Object）。</summary>
         void Release(object resource);
+    }
+
+    /// <summary>
+    /// 带域生命周期的资源后端（可选实现）：Mod 资源域整域释放时调用——
+    /// Unity AssetBundle 后端借此卸载整个 Bundle（§8.8 Dispose → Release 域）。
+    /// </summary>
+    public interface IScopedResourceBackend
+    {
+        /// <summary>某 Mod 包内容根目录的全部资源释放（卸载 Bundle）。</summary>
+        void ReleaseScope(string contentRoot);
     }
 }

@@ -18,7 +18,11 @@ DIST_MODS = os.path.join(ROOT, "dist", "mods")  # 全部 Mod 的构建暂存（�
 TMP = os.path.join(ROOT, ".tmp_modbuild")
 FRAMEWORK = ["Game.Mod.Contract", "Game.ECS", "Game.Messaging", "Game.Mod.Runtime"]
 UNITY_REFS = ["UnityEngine.CoreModule", "UnityEngine.IMGUIModule", "UnityEngine.InputLegacyModule",
-              "UnityEngine.TextRenderingModule", "UnityEngine.AudioModule", "UnityEngine.PhysicsModule"]
+              "UnityEngine.TextRenderingModule", "UnityEngine.AudioModule", "UnityEngine.PhysicsModule",
+              "UnityEngine.AnimationModule", "UnityEngine.AIModule", "UnityEngine.TerrainModule",
+              "UnityEngine.TerrainPhysicsModule", "UnityEngine.ParticleSystemModule",
+              "UnityEngine.UIModule", "UnityEngine.AssetBundleModule",
+              "UnityEngine.UnityWebRequestModule", "UnityEngine.UnityWebRequestAssetBundleModule"]
 
 
 def load_mods():
