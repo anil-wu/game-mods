@@ -194,10 +194,48 @@ namespace Game.Mod.Runtime
 
         // ---- 卸载（§7 最终定义） ----
 
+        private int _phaseDepth;
+        private readonly List<ModId> _pendingUnloads = new();
+
+        /// <summary>驱动相位开始（ModRuntimeHost.Tick 包裹系统执行）。</summary>
+        internal void BeginPhase() => _phaseDepth++;
+
+        /// <summary>驱动相位结束：统一执行相位内入队的卸载请求（帧末生效）。</summary>
+        internal void EndPhase()
+        {
+            _phaseDepth--;
+            if (_phaseDepth > 0 || _pendingUnloads.Count == 0) return;
+            var pending = _pendingUnloads.ToArray();
+            _pendingUnloads.Clear();
+            foreach (var id in pending)
+            {
+                if (!_loaded.ContainsKey(id)) continue;
+                if (_loaded[id].Info.Manifest.Pinned) continue;
+                UnloadImmediate(id);
+            }
+        }
+
         public void Unload(ModId id)
         {
             if (!_loaded.TryGetValue(id, out var mod))
                 throw new NoModException(id);
+
+            // 驱动相位内（系统 Update / Handler 执行中）：卸载请求入队，帧末统一执行——
+            // 避免在迭代途中修改系统/实体集合导致崩溃（与 §13.6 规则 3 同构）
+            if (_phaseDepth > 0)
+            {
+                if (mod.Info.Manifest.Pinned)
+                    throw new ModStateException($"主 Mod '{id}' 禁止销毁（pinned，§10.4）");
+                if (!_pendingUnloads.Contains(id))
+                    _pendingUnloads.Add(id);
+                return;
+            }
+            UnloadImmediate(id);
+        }
+
+        private void UnloadImmediate(ModId id)
+        {
+            var mod = _loaded[id];
 
             // 主 Mod 禁止销毁（§10.4：随进程生命周期存活）
             if (mod.Info.Manifest.Pinned)
@@ -218,6 +256,22 @@ namespace Game.Mod.Runtime
             mod.State = ModObjectState.Unloading;
             var modId = mod.Info.Id;
 
+            // ---- 泄漏统计（P1：被 Core 强制回收的项数，反映 Mod 是否对称注销） ----
+            var leakSystems = _systems.CountOf(modId);
+            var leakSubscriptions = _bus.SubscriptionCount(modId);
+            var leakProtocols = 0;
+            INetworkRuntime? networkRuntime = null;
+            if (_services.TryGet(WellKnownServices.NetworkRuntime, out var netSvc))
+            {
+                networkRuntime = (INetworkRuntime)netSvc;
+                if (networkRuntime is INetworkRuntimeDiagnostics diag)
+                    leakProtocols = diag.ProtocolCountOf(modId);
+            }
+            var leakServices = _services.CountOf(modId);
+            var leakCapabilities = 0;
+            foreach (var entry in _capabilities.Values)
+                if (entry.Owner == modId) leakCapabilities++;
+
             // 1. 对称注销（业务自己撤销声明）
             try { mod.Instance.Unregister(mod.Context); }
             catch (Exception e) { _log.Error($"[ModManager] {modId}.Unregister 异常: {e.Message}"); }
@@ -230,14 +284,13 @@ namespace Game.Mod.Runtime
             _bus.UnsubscribeAll(modId);
 
             // 4. 网络协议按 OwnerMod 一次性清理（§11.6）
-            if (_services.TryGet(WellKnownServices.NetworkRuntime, out var net))
-                ((INetworkRuntime)net).UnregisterAll(modId);
+            networkRuntime?.UnregisterAll(modId);
 
             // 5. ECS 系统移除（§9.2：World 属于 Runtime，Mod 只注册）
             _systems.RemoveAll(modId);
 
             // 5.1 销毁本 Mod 拥有的全部实体（ModObject 资源边界，§4/§7）
-            _world.DestroyAll(modId);
+            var leakEntities = _world.DestroyAll(modId);
 
             // 6. 服务注册全部撤销（含框架 Mod 基础设施）
             _services.UnregisterAll(modId);
@@ -265,7 +318,9 @@ namespace Game.Mod.Runtime
             _loaded.Remove(modId);
             _loadOrder.Remove(modId);
             ModUnloaded?.Invoke(modId);
-            _log.Info($"[ModManager] 已卸载 {mod.Info}");
+            _log.Info(
+                $"[ModManager] 已卸载 {mod.Info}（强制回收: 系统 {leakSystems}, 订阅 {leakSubscriptions}, " +
+                $"协议 {leakProtocols}, 服务 {leakServices}, 能力 {leakCapabilities}, 实体 {leakEntities}）");
         }
 
         /// <summary>

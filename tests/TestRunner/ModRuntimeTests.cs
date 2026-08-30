@@ -321,6 +321,46 @@ namespace TestRunner
             Assert.Equal(0, host.Manager.UnloadAll().Count);
         }
 
+        /// <summary>在系统 Update 中请求卸载自身的 Mod（P0：相位内卸载延迟到帧末）。</summary>
+        public sealed class SelfUnloadInUpdateMod : IMod
+        {
+            public static readonly ModId Id = new("com.test.suicidal");
+
+            public sealed class SuicideSystem : ISystem
+            {
+                public IModContext? Ctx;
+                public bool Done;
+                public void Update(SystemContext context)
+                {
+                    if (Done) return;
+                    Done = true;
+                    Ctx!.Mods.Unload(Id); // 迭代途中请求卸载——应入队而非崩溃
+                }
+            }
+
+            public void Register(IModContext context)
+                => context.Ecs.RegisterSystem(new SuicideSystem { Ctx = context }, SystemSide.Shared);
+
+            public void Unregister(IModContext context) { }
+        }
+
+        [Test]
+        public static void Unload_DuringSystemUpdate_DeferredToFrameEnd()
+        {
+            var host = Host();
+            host.Load(Manifest("com.test.suicidal", typeof(SelfUnloadInUpdateMod).FullName!),
+                typeof(SelfUnloadInUpdateMod).Assembly);
+            Assert.True(host.Manager.IsLoaded(SelfUnloadInUpdateMod.Id));
+
+            // Tick 中系统请求卸载自身：不得崩溃，帧末生效
+            host.Tick(0.016f);
+            Assert.True(!host.Manager.IsLoaded(SelfUnloadInUpdateMod.Id));
+            Assert.Equal(0, host.Systems.CountOf(SelfUnloadInUpdateMod.Id));
+
+            // 后续 Tick 正常
+            host.Tick(0.016f);
+        }
+
         [Test]
         public static void PinnedMod_CannotBeDestroyed()
         {

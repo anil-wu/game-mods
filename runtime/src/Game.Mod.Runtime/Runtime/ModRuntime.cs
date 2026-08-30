@@ -52,14 +52,30 @@ namespace Game.Mod.Runtime
         public void Tick(float deltaTime)
         {
             Messages.BeginFrame();
-            Systems.UpdateAll(World, deltaTime);
+            Manager.BeginPhase(); // 相位内卸载请求入队，帧末统一执行（防迭代中崩溃）
+            try
+            {
+                Systems.UpdateAll(World, deltaTime);
+            }
+            finally
+            {
+                Manager.EndPhase();
+            }
         }
 
         /// <summary>按端侧 tick：Server 端执行 Server+Shared，Client 端执行 Client+Shared。</summary>
         public void Tick(float deltaTime, SystemSide side)
         {
             Messages.BeginFrame();
-            Systems.Update(World, deltaTime, side);
+            Manager.BeginPhase();
+            try
+            {
+                Systems.Update(World, deltaTime, side);
+            }
+            finally
+            {
+                Manager.EndPhase();
+            }
         }
     }
 }

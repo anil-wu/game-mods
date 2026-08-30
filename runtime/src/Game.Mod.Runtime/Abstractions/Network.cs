@@ -142,6 +142,12 @@ namespace Game.Mod.Runtime
         NetworkStats GetStats();
     }
 
+    /// <summary>网络运行时诊断（可选实现）：卸载泄漏报告等可观测性钩子。</summary>
+    public interface INetworkRuntimeDiagnostics
+    {
+        int ProtocolCountOf(ModId owner);
+    }
+
     /// <summary>流量统计（§11.13：Connection / Mod / Protocol 三级，原型提供 Mod/Protocol 两级）。</summary>
     public sealed class NetworkStats
     {

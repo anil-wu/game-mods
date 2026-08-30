@@ -20,7 +20,7 @@ namespace Com.Game.Network
     /// 硬边界：可以路由任何协议，但绝不拥有任何 Gameplay Protocol（§11.1）——
     /// 只认识 ProtocolId / Version / Encode / Decode / Handler / OwnerMod。
     /// </summary>
-    public sealed class NetworkRuntimeImpl : INetworkRuntime
+    public sealed class NetworkRuntimeImpl : INetworkRuntime, INetworkRuntimeDiagnostics
     {
         /// <summary>帧头：[ProtocolId u32][Ver u16][Flags u16][Payload Len u32]（§11.5）。</summary>
         public const int FrameHeaderSize = 12;
@@ -108,6 +108,14 @@ namespace Com.Game.Network
         }
 
         public bool IsRegistered(ProtocolId id) => _protocols.ContainsKey(id);
+
+        public int ProtocolCountOf(ModId owner)
+        {
+            var n = 0;
+            foreach (var entry in _protocols.Values)
+                if (entry.Owner == owner) n++;
+            return n;
+        }
 
         // ---- 发送（§11.7：通信方向由 API 形态强制 + 归属校验） ----
 

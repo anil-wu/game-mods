@@ -220,6 +220,16 @@ namespace Game.Messaging
         public int SubscriberCount(MessageId id) =>
             _subscribers.TryGetValue(id, out var list) ? list.Count : 0;
 
+        /// <summary>某 Mod 的订阅总数（卸载泄漏报告用）。</summary>
+        public int SubscriptionCount(ModId subscriber)
+        {
+            var n = 0;
+            foreach (var list in _subscribers.Values)
+                foreach (var sub in list)
+                    if (sub.Subscriber == subscriber) n++;
+            return n;
+        }
+
         private void RecordTrace(in MessageEnvelope envelope, int subscriberCount, long elapsedTicks)
         {
             _trace[_traceHead] = new MessageTraceEntry(envelope.Id, envelope.Sender, subscriberCount, elapsedTicks);

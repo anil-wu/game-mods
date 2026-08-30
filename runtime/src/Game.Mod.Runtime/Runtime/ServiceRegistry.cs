@@ -37,6 +37,15 @@ namespace Game.Mod.Runtime
             return false;
         }
 
+        /// <summary>某 Mod 注册的服务数（卸载泄漏报告用）。</summary>
+        public int CountOf(ModId owner)
+        {
+            var n = 0;
+            foreach (var entry in _services.Values)
+                if (entry.Owner == owner) n++;
+            return n;
+        }
+
         /// <summary>卸载某 Mod 注册的全部服务（Core 强制，不依赖 Mod 自觉）。</summary>
         public void UnregisterAll(ModId owner)
         {
