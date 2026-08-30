@@ -33,6 +33,9 @@ def load_mods():
                 os.path.join(ROOT, "samples", "*", "mods", "*", "mod.json")]
     for pattern in patterns:
         for path in glob.glob(pattern):
+            # 独立 Unity 工程的 Mod 由 build-mod-unity.py 构建（见 design/mod-unity-project.md），跳过
+            if os.path.isfile(os.path.join(os.path.dirname(path), "Packages", "manifest.json")):
+                continue
             with open(path, encoding="utf-8") as f:
                 m = json.load(f)
             modules = m.get("modules", {})

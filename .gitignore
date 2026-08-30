@@ -33,3 +33,22 @@ runtime/Unity/Assets/Mirror.meta
 *.log
 replica_projects/*
 dist/
+
+# === Mod = 独立 Unity 工程（生成物不入库） ===
+**/Library/
+**/Temp/
+**/UserSettings/
+**/Logs/
+**/obj/
+**/AssetBundleBuild/
+**/Packages/packages-lock.json
+# AssetBundle 构建产物（build-mod-unity.py 可再生）
+*.bundle
+# Mod 工程内同步的框架 DLL（build-mod-unity.py 拷贝）
+mods/**/Assets/Plugins/*.dll
+mods/**/Assets/Plugins/*.dll.meta
+samples/**/Assets/Plugins/*.dll
+samples/**/Assets/Plugins/*.dll.meta
+# Mod 工程自动生成的 ProjectSettings（模板仅保留 ProjectVersion.txt）
+samples/**/ProjectSettings/*.asset
+mods/**/ProjectSettings/*.asset

@@ -20,7 +20,7 @@
     <Compile Include="../../mods/com.game.ui/src/**/*.cs" />
     <Compile Include="../../mods/com.game.modstore/src/**/*.cs" Exclude="../../mods/com.game.modstore/src/ModStoreView.cs" />
     <Compile Include="../../mods/com.sample.pushbox/src/**/*.cs" Exclude="../../mods/com.sample.pushbox/src/PushBoxView.cs" />
-    <Compile Include="../../samples/MirrorUnityFPS/mods/com.fps.player/src/**/*.cs" Exclude="../../samples/MirrorUnityFPS/mods/com.fps.player/src/PlayerView.cs" />
+    <Compile Include="../../samples/MirrorUnityFPS/mods/com.fps.player/Assets/Scripts/**/*.cs" Exclude="../../samples/MirrorUnityFPS/mods/com.fps.player/Assets/Scripts/PlayerView.cs" />
     <Compile Include="../../samples/MirrorUnityFPS/mods/com.fps.weapon/src/**/*.cs" Exclude="../../samples/MirrorUnityFPS/mods/com.fps.weapon/src/WeaponView.cs" />
     <Compile Include="../../samples/MirrorUnityFPS/mods/com.fps.inventory/src/**/*.cs" Exclude="../../samples/MirrorUnityFPS/mods/com.fps.inventory/src/InventoryView.cs" />
     <Compile Include="../../samples/MirrorUnityFPS/mods/com.fps.mapgen/src/**/*.cs" Exclude="../../samples/MirrorUnityFPS/mods/com.fps.mapgen/src/MapGenView.cs" />

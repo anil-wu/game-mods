@@ -35,8 +35,7 @@ namespace Game.Runtime
 
         public void Release(object resource)
         {
-            if (resource is UnityEngine.Object obj)
-                Resources.Unload(obj);
+            // AssetBundle 资源不逐个卸载——整域卸载在 ReleaseScope 里 Unload(bundle)（§8.8）
         }
 
         public void ReleaseScope(string contentRoot)

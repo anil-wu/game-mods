@@ -21,13 +21,13 @@ STREAMING = os.path.join(ROOT, "runtime", "Unity", "Assets", "StreamingAssets", 
 
 
 def discover_mod_projects():
+    """发现 Mod：目录含 mod.json 即视为 Mod；build_one 再补 Unity 工程脚手架。"""
     projects = {}
     for pattern in [os.path.join(ROOT, "mods", "*"),
                     os.path.join(ROOT, "samples", "*", "mods", "*")]:
         for d in glob.glob(pattern):
-            if os.path.isfile(os.path.join(d, "Packages", "manifest.json")):
-                mod_id = os.path.basename(d)
-                projects[mod_id] = d
+            if os.path.isfile(os.path.join(d, "mod.json")):
+                projects[os.path.basename(d)] = d
     return projects
 
 
