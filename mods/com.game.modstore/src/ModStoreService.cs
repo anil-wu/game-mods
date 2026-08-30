@@ -85,7 +85,9 @@ namespace Com.Game.ModStore
             return mod;
         }
 
-        /// <summary>一键：安装闭包并启动目标 Mod。</summary>
+        /// <summary>一键：安装闭包并启动目标 Mod（无头/测试场景）。
+        /// Unity 调用方注意：StartInstalled 会触发 ModLoaded → 视图实例化（Unity API），
+        /// 必须在主线程执行——应拆两段：后台 InstallWithClosure + 主线程 StartInstalled。</summary>
         public async Task<ModObject> InstallAndStart(ModId id, ModVersion version)
         {
             await InstallWithClosure(id, version).ConfigureAwait(false);

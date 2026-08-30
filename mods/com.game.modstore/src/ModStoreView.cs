@@ -58,7 +58,7 @@ namespace Com.Game.ModStore
                 {
                     GUI.enabled = _busy.Length == 0;
                     if (GUILayout.Button("安装并启动", GUILayout.Width(90)))
-                        Run(() => ModStoreMod.Service.InstallAndStart(mod.Id, mod.Version), _ => { });
+                        InstallThenStartOnMainThread(mod.Id, mod.Version);
                     GUI.enabled = true;
                 }
                 GUILayout.EndHorizontal();
@@ -87,13 +87,41 @@ namespace Com.Game.ModStore
             var task = Task.Run(action);
             task.ContinueWith(t =>
             {
-                // ContinueWith 回到调用线程由 Unity 主循环保证（OnGUI 每帧读状态）
+                // ContinueWith 经 UnitySynchronizationContext 回到主线程
                 if (t.IsFaulted)
                     _busy = $"失败: {t.Exception?.GetBaseException().Message}";
                 else
                 {
                     _busy = "";
                     onDone(t.Result);
+                }
+            }, TaskScheduler.FromCurrentSynchronizationContext());
+        }
+
+        /// <summary>
+        /// 两阶段安装启动：下载/解包（纯 IO）放后台线程；
+        /// StartInstalled 必须回主线程——ModManager.LoadFromDirectory 会触发 ModLoaded →
+        /// 运行时实例化 Mod 视图（new GameObject），Unity API 只能在主线程调用。
+        /// </summary>
+        private void InstallThenStartOnMainThread(global::Game.Mod.Contract.ModId id, global::Game.Mod.Contract.ModVersion version)
+        {
+            _busy = "下载安装…";
+            var task = Task.Run(() => ModStoreMod.Service.InstallWithClosure(id, version));
+            task.ContinueWith(t =>
+            {
+                if (t.IsFaulted)
+                {
+                    _busy = $"失败: {t.Exception?.GetBaseException().Message}";
+                    return;
+                }
+                try
+                {
+                    ModStoreMod.Service.StartInstalled(id); // 主线程（视图实例化安全）
+                    _busy = "";
+                }
+                catch (Exception e)
+                {
+                    _busy = $"失败: {e.GetBaseException().Message}";
                 }
             }, TaskScheduler.FromCurrentSynchronizationContext());
         }
