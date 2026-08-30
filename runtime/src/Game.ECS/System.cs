@@ -55,6 +55,16 @@ namespace Game.ECS
                     yield return (new Entity(e), a, b, c);
             }
         }
+
+        public IEnumerable<(Entity, A, B, C, D)> Query<A, B, C, D>()
+            where A : struct, IComponent where B : struct, IComponent where C : struct, IComponent where D : struct, IComponent
+        {
+            foreach (var (e, a) in World.Store<A>().All())
+            {
+                if (World.Store<B>().TryGet(e, out var b) && World.Store<C>().TryGet(e, out var c) && World.Store<D>().TryGet(e, out var d))
+                    yield return (new Entity(e), a, b, c, d);
+            }
+        }
     }
 
     /// <summary>

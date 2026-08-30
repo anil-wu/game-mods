@@ -191,6 +191,7 @@ namespace Com.Game.Network
             {
                 // 帧自描述：未知实体即创建（乱序 / 中途加入免疫）
                 tracked = new TrackedEntity { Entity = _world.CreateEntity(), Archetype = archetype };
+                _world.Add(tracked.Entity, new ReplicaTag()); // Host 单 World 双端区分
                 _clientReplicas[networkId] = tracked;
                 _clientEntityToNetId[tracked.Entity.Id] = networkId;
             }

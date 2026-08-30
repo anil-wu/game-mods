@@ -80,6 +80,13 @@ namespace TestRunner
 
         public static string ModJson(string modId) => File.ReadAllText(Path.Combine(ModDir(modId), "mod.json"));
 
+        /// <summary>复刻案例 Mod 目录（samples/&lt;Case&gt;/mods/&lt;modId&gt;，规范 Rule 3/4）。</summary>
+        public static string SampleModDir(string caseName, string modId) =>
+            Path.Combine(Root, "samples", caseName, "mods", modId);
+
+        public static string SampleModJson(string caseName, string modId) =>
+            File.ReadAllText(Path.Combine(SampleModDir(caseName, modId), "mod.json"));
+
         private static string FindRoot()
         {
             var dir = new DirectoryInfo(AppContext.BaseDirectory);

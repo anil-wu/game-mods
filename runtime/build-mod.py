@@ -22,23 +22,27 @@ UNITY_REFS = ["UnityEngine.CoreModule", "UnityEngine.IMGUIModule", "UnityEngine.
 
 
 def load_mods():
-    """读取 mods/*/mod.json（Manifest v2：id / modules / dependencies 数组）。"""
+    """读取 mods/*/mod.json 与 samples/*/mods/*/mod.json（Manifest v2：id / modules / dependencies 数组）。
+    两个创作空间同构（复刻规范 Rule 4），统一拓扑排序构建。"""
     mods = {}
-    for path in glob.glob(os.path.join(ROOT, "mods", "*", "mod.json")):
-        with open(path, encoding="utf-8") as f:
-            m = json.load(f)
-        modules = m.get("modules", {})
-        entry = modules.get("shared") or m.get("entryDll")  # v2 优先，v1 兜底
-        deps = []
-        for d in m.get("dependencies", []):
-            deps.append(d["id"] if isinstance(d, dict) else d)
-        mods[m["id"]] = {
-            "dir": os.path.dirname(path),
-            "id": m["id"],
-            "entry": entry,
-            "deps": deps,
-            "boot": m.get("boot", True),  # False = 不进启动集（仅商店/打包分发）
-        }
+    patterns = [os.path.join(ROOT, "mods", "*", "mod.json"),
+                os.path.join(ROOT, "samples", "*", "mods", "*", "mod.json")]
+    for pattern in patterns:
+        for path in glob.glob(pattern):
+            with open(path, encoding="utf-8") as f:
+                m = json.load(f)
+            modules = m.get("modules", {})
+            entry = modules.get("shared") or m.get("entryDll")  # v2 优先，v1 兜底
+            deps = []
+            for d in m.get("dependencies", []):
+                deps.append(d["id"] if isinstance(d, dict) else d)
+            mods[m["id"]] = {
+                "dir": os.path.dirname(path),
+                "id": m["id"],
+                "entry": entry,
+                "deps": deps,
+                "boot": m.get("boot", True),  # False = 不进启动集（仅商店/打包分发）
+            }
     return mods
 
 
