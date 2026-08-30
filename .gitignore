@@ -32,3 +32,4 @@ runtime/Unity/Assets/Mirror.meta
 
 *.log
 replica_projects/*
+dist/

@@ -37,7 +37,7 @@ app.MapGet("/api/mods", () =>
     {
         modId = m.ModId.Value,
         version = m.Version.ToString(),
-        dependencies = m.Dependencies.ToDictionary(k => k.Key.Value, v => v.Value.ToString()),
+        dependencies = m.Dependencies.ToDictionary(d => d.Id.Value, d => d.Version.ToString()),
     })));
 
 app.MapGet("/api/mods/{modId}", (string modId) =>

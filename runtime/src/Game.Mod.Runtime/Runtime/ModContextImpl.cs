@@ -256,6 +256,8 @@ namespace Game.Mod.Runtime
         public ModObject? Get(ModId id) => _manager.Get(id);
         public bool IsLoaded(ModId id) => _manager.IsLoaded(id);
         public ModObject Load(ModId id) => _manager.Load(id);
+        public ModObject LoadFromDirectory(string modDirectory) => _manager.LoadFromDirectory(modDirectory);
+        public ModManifest RegisterDirectory(string modDirectory) => _manager.RegisterDirectory(modDirectory);
         public void Unload(ModId id) => _manager.Unload(id);
 
         public void Export(CapabilityId id, Delegate handler)

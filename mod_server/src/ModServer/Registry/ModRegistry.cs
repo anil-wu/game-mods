@@ -112,11 +112,12 @@ public sealed class ModRegistry
             var rec = Get(mid, ver) ?? throw new Exception($"找不到 {key}");
             result.Add(rec);
 
-            foreach (var (depId, range) in rec.Manifest.Dependencies)
+            foreach (var dep in rec.Manifest.Dependencies)
             {
-                var depVer = FindSatisfying(depId, range)
-                    ?? throw new Exception($"依赖 '{depId}' 无满足 {range} 的版本");
-                queue.Enqueue((depId, depVer));
+                if (dep.Optional) continue; // 可选依赖不进闭包（§12.4）
+                var depVer = FindSatisfying(dep.Id, dep.Version)
+                    ?? throw new Exception($"依赖 '{dep.Id}' 无满足 {dep.Version} 的版本");
+                queue.Enqueue((dep.Id, depVer));
             }
         }
         return result;

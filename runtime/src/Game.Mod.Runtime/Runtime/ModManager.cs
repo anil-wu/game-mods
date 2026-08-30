@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using System.Linq;
 using System.Reflection;
 using Game.ECS;
@@ -131,6 +132,28 @@ namespace Game.Mod.Runtime
         }
 
         private readonly Dictionary<ModId, (System.Reflection.Assembly[] Assemblies, string? ContentRoot)> _preloadedAssemblies = new();
+
+        /// <summary>从单个包目录注册并加载（Mod 商店等管理型 Mod 的动态安装入口）。</summary>
+        public ModObject LoadFromDirectory(string modDirectory)
+        {
+            var manifestPath = Path.Combine(modDirectory, ModDiscovery.ManifestFileName);
+            if (!File.Exists(manifestPath))
+                throw new ModStateException($"目录不含 {ModDiscovery.ManifestFileName}: {modDirectory}");
+            var manifest = ModManifest.Parse(File.ReadAllText(manifestPath));
+            _packages[manifest.ModId] = new ModPackage(manifest, modDirectory);
+            return Load(manifest.ModId); // 依赖递归解析（§12.3）
+        }
+
+        /// <summary>仅注册包目录不加载（批量安装闭包后统一 Load 目标 Mod）。</summary>
+        public ModManifest RegisterDirectory(string modDirectory)
+        {
+            var manifestPath = Path.Combine(modDirectory, ModDiscovery.ManifestFileName);
+            if (!File.Exists(manifestPath))
+                throw new ModStateException($"目录不含 {ModDiscovery.ManifestFileName}: {modDirectory}");
+            var manifest = ModManifest.Parse(File.ReadAllText(manifestPath));
+            _packages[manifest.ModId] = new ModPackage(manifest, modDirectory);
+            return manifest;
+        }
 
         // ---- IModManager 语义（显式调用方） ----
 

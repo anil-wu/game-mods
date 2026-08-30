@@ -36,6 +36,13 @@ namespace Game.Mod.Runtime
 
         ModObject Load(ModId id);
 
+        /// <summary>从单个包目录（含 manifest.json）注册并加载，依赖递归解析（§12.3 由 ModResolver 统一负责）。
+        /// 供 Mod 商店等管理型 Mod 在下载安装后启动 Mod 使用。</summary>
+        ModObject LoadFromDirectory(string modDirectory);
+
+        /// <summary>仅注册包目录不加载（批量安装依赖闭包后统一 Load 目标 Mod）。</summary>
+        ModManifest RegisterDirectory(string modDirectory);
+
         /// <summary>热卸载（§7）：业务注销 → CloseAll → 强制退订 → 协议/ECS/UI 注销 → 清池 → 释放资源 → 卸载程序集。</summary>
         void Unload(ModId id);
 

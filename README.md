@@ -111,6 +111,7 @@ feature/* ──(PR 合并)──► develop ──(发布合并)──► maste
 │   ├── com.game.network      Network.Mod（框架：协议注册/路由/校验/统计 + Loopback）
 │   ├── com.game.ui           UI.Mod（框架：WindowManager）
 │   ├── com.game.core         核心 Mod（游戏基础内容）
+│   ├── com.game.modstore     Mod 商店（呈现服务器 Mod → 闭包下载安装 → 动态启动）
 │   ├── com.sample.hello      示例 Mod（ECS）
 │   └── com.sample.pushbox    示例 Mod（联机推箱子 + CONTRACT.md 契约文档）
 ├── replica_projects/    可复刻的参照工程（只读对标，规范见 design/replica-conventions.md）
@@ -131,6 +132,9 @@ bash runtime/build-unity-dlls.sh      # 或 build-unity-dlls.cmd
 
 # 构建全部 Mod → DLL + manifest（拷贝到 runtime/Unity/Assets/StreamingAssets/mods/）
 python runtime/build-mod.py           # 或 bash runtime/build-mod.sh
+
+# 打包 Mod 为 .mod（zip），供上传到 mod_server
+python runtime/pack-mod.py [modId ...]   # 产物: dist/packages/*.mod
 
 # 运行全部无头测试（契约/消息/ECS/Mod运行时/网络/UI/推箱子端到端，纯 .NET 无需 Unity）
 bash tests/run.sh
@@ -174,6 +178,20 @@ MOD_PACKAGES_DIR=./packages dotnet run
 - `GET /api/mods` 列出所有 Mod
 - `GET /api/mods/{modId}/{version}/download` 下载
 - `POST /api/resolve` 解析依赖闭包
+
+### Mod 商店（com.game.modstore）
+
+运行时内呈现 mod_server 上的 Mod 列表 → 按依赖闭包下载安装到本地 mods 目录 → 动态启动：
+
+```bash
+# 1. 启动 mod_server 并上传一些 .mod 包（见上两节）
+# 2. Unity Play：右上角商店面板 → 刷新列表 → 安装并启动
+#    （下载目录: persistentDataPath/mods；服务器地址可用环境变量 MOD_SERVER_URL 预设）
+```
+
+- 能力导出（ModCall）：`modstore:list` / `modstore:install_and_start`，其他 Mod 可直接调用
+- 契约与行为约定见 `mods/com.game.modstore/CONTRACT.md`
+- 会话限制：联网会话中不要启动注册了新协议的 Mod（§11.14）
 
 ## 样例复刻
 
