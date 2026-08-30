@@ -25,9 +25,23 @@ namespace Com.Fps.Weapon
             try
             {
                 if (WeaponMod.Context?.Resources.Load(FpsPistol) is GameObject prefab)
+                {
                     _heldWeapon = Instantiate(prefab);
+                    NormalizeHeight(_heldWeapon, 0.55f); // 枪+手第一人称合理尺寸（原 2.4m 过大）
+                }
             }
             catch (System.Exception) { }
+        }
+
+        /// <summary>按包围盒高度归一化缩放（不同 FBX 导入缩放差异巨大）。</summary>
+        private static void NormalizeHeight(GameObject go, float targetHeight)
+        {
+            var bounds = new Bounds(go.transform.position, Vector3.zero);
+            var any = false;
+            foreach (var r in go.GetComponentsInChildren<Renderer>()) { bounds.Encapsulate(r.bounds); any = true; }
+            if (!any || bounds.size.y <= 0.0001f) return;
+            var scale = targetHeight / bounds.size.y;
+            go.transform.localScale = Vector3.Scale(go.transform.localScale, new Vector3(scale, scale, scale));
         }
 
         private void LateUpdate()

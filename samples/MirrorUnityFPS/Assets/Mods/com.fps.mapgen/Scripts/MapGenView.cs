@@ -35,7 +35,9 @@ namespace Com.Fps.MapGen
                 var go = prefab is not null ? Instantiate(prefab) : GameObject.CreatePrimitive(PrimitiveType.Cube);
                 go.name = "Building";
                 go.transform.SetParent(transform);
-                go.transform.position = new Vector3(x, y, z);
+                // 建筑原 50m 高，归一化到 ~8m；base 贴地
+                if (prefab is not null) NormalizeHeight(go, 8f);
+                go.transform.position = new Vector3(x, 0f, z);
                 if (prefab is null) go.GetComponent<Renderer>().material.color = new Color(0.55f, 0.45f, 0.35f);
             }
 
@@ -47,6 +49,16 @@ namespace Com.Fps.MapGen
         {
             try { return MapGenMod.Context?.Resources.Load(id) as GameObject; }
             catch (System.Exception) { return null; }
+        }
+
+        private static void NormalizeHeight(GameObject go, float targetHeight)
+        {
+            var bounds = new Bounds(go.transform.position, Vector3.zero);
+            var any = false;
+            foreach (var r in go.GetComponentsInChildren<Renderer>()) { bounds.Encapsulate(r.bounds); any = true; }
+            if (!any || bounds.size.y <= 0.0001f) return;
+            var scale = targetHeight / bounds.size.y;
+            go.transform.localScale = Vector3.Scale(go.transform.localScale, new Vector3(scale, scale, scale));
         }
     }
 }

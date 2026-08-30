@@ -50,6 +50,10 @@ namespace Game.Runtime.Editor
                 }
                 var go = Object.Instantiate(prefab);
                 go.transform.position = new Vector3(x, 0, 0);
+                var bounds = new Bounds(go.transform.position, Vector3.zero);
+                foreach (var r in go.GetComponentsInChildren<Renderer>())
+                    bounds.Encapsulate(r.bounds);
+                Debug.Log($"[Probe] {name} 包围盒尺寸={bounds.size} 中心={bounds.center}");
                 foreach (var r in go.GetComponentsInChildren<Renderer>())
                 {
                     var mat = r.sharedMaterial;
