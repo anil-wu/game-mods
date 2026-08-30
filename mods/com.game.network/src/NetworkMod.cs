@@ -37,7 +37,7 @@ namespace Com.Game.Network
                 context.Ecs.RegisterSystem(new SnapshotSystem(replication), SystemSide.Server);
 
             context.Log.Info($"Network.Mod '{context.Info.Id}' v{context.Info.Version} 已注册（Role×Path 正交，Rule 15；" +
-                $"版本协商 §11.6 + 兴趣管理 §11.8 已装配）");
+                $"版本协商 §11.6 + 兴趣管理 §11.8 + 加密 §11.12 + 流量配额 §11.13 已装配）");
         }
 
         public void Unregister(IModContext context)

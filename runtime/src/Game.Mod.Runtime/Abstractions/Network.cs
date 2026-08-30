@@ -194,6 +194,13 @@ namespace Game.Mod.Runtime
         /// </summary>
         void RegisterLegacyCodec(ModId owner, ProtocolId id, ushort version, INetworkProtocol codec);
 
+        /// <summary>
+        /// 配置 Mod 网络预算（§11.13：maxMessageSize / maxPacketRate / maxBandwidth / maxConnectionBandwidth）；
+        /// null = 恢复默认。超预算则 Throttle——防恶意/写错的 Mod 洪水拖垮服务器。
+        /// UnregisterAll 按 owner 一并清理（Rule 20）。
+        /// </summary>
+        void ConfigureBudget(ModId owner, NetworkBudget? budget);
+
         NetworkStats GetStats();
     }
 
@@ -215,6 +222,21 @@ namespace Game.Mod.Runtime
 
         /// <summary>未协商连接上的业务帧 / 已降级禁用协议帧（§11.6 防御：握手完成前业务流量不可注入）。</summary>
         public long DroppedNotNegotiated;
+
+        /// <summary>配额/限流丢弃（§11.13：预算超限 + 挂起窗口 + 连接级收包预算）。</summary>
+        public long DroppedThrottle;
+
+        /// <summary>加密认证失败（§11.12：信封损坏 / 密钥不匹配 / 篡改）。</summary>
+        public long DroppedAuth;
+
+        /// <summary>重放丢弃（§11.12：滑动窗口序号防重放）。</summary>
+        public long DroppedReplay;
+
+        /// <summary>连接级累计字节（收/发合计，§11.13 三级统计之 Connection 级）。</summary>
+        public readonly Dictionary<int, long> BytesByConnection = new();
+
+        /// <summary>协议级累计字节（§11.13 三级统计之 Protocol 级）。</summary>
+        public readonly Dictionary<ProtocolId, long> BytesByProtocol = new();
 
         public readonly Dictionary<ModId, long> BytesByMod = new();
         public readonly Dictionary<ProtocolId, long> MessagesByProtocol = new();

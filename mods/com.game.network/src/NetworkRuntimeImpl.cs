@@ -10,7 +10,8 @@ namespace Com.Game.Network
     /// 网络运行时实现（§11.2）：编排器——生命周期（Start/Stop/AttachTransport）、
     /// 公开 API 路由（注册/发送/统计）、Dispatch 顶层控制流。
     /// 五层各自独立：ProtocolRegistry（注册表 + legacy codec）/ FrameCodec（12B 帧头）/
-    /// NegotiationLayer（§11.6 版本协商）/ InterestManager（§11.8 兴趣过滤）。
+    /// NegotiationLayer（§11.6 版本协商）/ InterestManager（§11.8 兴趣过滤）/ SecurityLayer（§11.12 加密）/
+    /// TrafficLayer（§11.13 流量配额）。
     /// 硬边界：可以路由任何协议，但绝不拥有任何 Gameplay Protocol（§11.1）——
     /// 只认识 ProtocolId / Version / Encode / Decode / Handler / OwnerMod。
     /// </summary>
@@ -23,12 +24,21 @@ namespace Com.Game.Network
         private readonly FrameCodec _codec = new();
         private readonly NetworkStats _stats = new();
         private readonly InterestManager _interest = new();
+        private readonly SecurityLayer _security;
+        private readonly TrafficLayer _traffic;
         private readonly NegotiationLayer _negotiation;
 
         private INetworkTransport? _transport;
 
-        public NetworkRuntimeImpl()
+        /// <summary>
+        /// 构造。securityProviderFactory 可注入自定义加密算法（§11.12 算法可替换）；
+        /// 缺省使用 AES-CBC+HMAC-SHA256 默认实现（零第三方依赖）。
+        /// </summary>
+        public NetworkRuntimeImpl(Func<INetworkSecurityProvider>? securityProviderFactory = null)
         {
+            _security = new SecurityLayer(
+                securityProviderFactory ?? (() => new AesHmacSecurityProvider()), _stats);
+            _traffic = new TrafficLayer(_stats);
             _negotiation = new NegotiationLayer(_registry, this);
         }
 
@@ -37,6 +47,12 @@ namespace Com.Game.Network
 
         /// <summary>版本协商层（§11.6）：引导/测试装配 RequiredMods 等策略。</summary>
         public NegotiationLayer Negotiation => _negotiation;
+
+        /// <summary>加密层（§11.12）：引导装配 psk（runtime.Security.Enable(psk)）；未启用 = 明文兼容模式。</summary>
+        public SecurityLayer Security => _security;
+
+        /// <summary>流量配额层（§11.13）：引导/测试装配预算（runtime.ConfigureBudget）。</summary>
+        public TrafficLayer Traffic => _traffic;
 
         /// <summary>ECS Replication 运行时（由 NetworkMod 装配，§11.10）。</summary>
         public ReplicationRuntime? Replication { get; set; }
@@ -76,6 +92,8 @@ namespace Com.Game.Network
             IsActive = false;
             _transport?.Stop();
             _negotiation.Reset(); // 连接状态清零（支持重启）
+            _security.Reset(); // 序号/重放窗口清零（保持启用状态与密钥）
+            _traffic.Reset(); // 窗口/违规/预算清零
         }
 
         /// <summary>客户端传输就绪 → 发起版本协商握手（§11.6）。</summary>
@@ -112,6 +130,7 @@ namespace Com.Game.Network
         {
             _registry.UnregisterAll(owner); // 含 legacy codecs（Rule 20）
             _interest.UnregisterAll(owner); // 兴趣钩子一并清理（Rule 20）
+            _traffic.UnregisterAll(owner); // 预算与统计一并清理（Rule 20）
             Replication?.UnregisterAll(owner); // 复制注册与副本实体一并清理（§11.10）
         }
 
@@ -130,6 +149,8 @@ namespace Com.Game.Network
             }
             _interest.Register(owner, pid, manager);
         }
+
+        public void ConfigureBudget(ModId owner, NetworkBudget? budget) => _traffic.ConfigureBudget(owner, budget);
 
         // ---- ECS Replication（§11.10，委托 ReplicationRuntime） ----
 
@@ -185,8 +206,10 @@ namespace Com.Game.Network
             var entry = ValidateSend(sender, id, NetworkDirection.ClientToServer);
             _negotiation.ValidateSend(NegotiationLayer.ClientConnId, id); // 未协商/拒绝/禁用 → 抛（§11.6）
             var frame = EncodeFrame(entry, entry.Protocol, message, entry.Protocol.Version); // 客户端恒发自身注册版本
-            _transport!.SendFromClient(frame);
-            CountSend(entry, frame.Length);
+            if (!_traffic.CheckSend(entry.Owner, id, frame.Length)) return; // ⑤ 预算/限流 → drop（§11.13）
+            var wire = _security.EncryptC2S(frame); // ⑥ 加密（压缩后、分包前，§11.9；未启用 = 直通）
+            _transport!.SendFromClient(wire); // ⑦
+            _traffic.AccountSendWire(entry.Owner, NegotiationLayer.ClientConnId, wire.Length); // 加密后传输字节记账
         }
 
         public void SendToClient(ModId sender, int connectionId, ProtocolId id, object message)
@@ -195,8 +218,10 @@ namespace Com.Game.Network
             if (!_negotiation.CanDeliver(connectionId, id)) return; // 未协商/禁用连接不发（§11.6）
             var (version, codec) = _negotiation.SelectSendCodec(connectionId, id, entry);
             var frame = EncodeFrame(entry, codec, message, version);
-            _transport!.SendFromServerTo(connectionId, frame);
-            CountSend(entry, frame.Length);
+            if (!_traffic.CheckSend(entry.Owner, id, frame.Length)) return; // ⑤ 预算/限流 → drop（§11.13）
+            var wire = _security.EncryptS2C(connectionId, frame); // ⑥ 加密（§11.9 压缩后、分包前）
+            _transport!.SendFromServerTo(connectionId, wire); // ⑦
+            _traffic.AccountSendWire(entry.Owner, connectionId, wire.Length);
         }
 
         public void Broadcast(ModId sender, ProtocolId id, object message)
@@ -216,9 +241,13 @@ namespace Com.Game.Network
             // 帧只 Encode 一次（§1.2：逐连接只多一次发送；多连接版本不一致由协商保证收敛到共同版本）
             var (version, codec) = _negotiation.SelectSendCodec(candidates[0], id, entry);
             var frame = EncodeFrame(entry, codec, message, version);
+            if (!_traffic.CheckSend(entry.Owner, id, frame.Length)) return; // ⑤ 预算/限流 → drop（§11.13）
             foreach (var connId in candidates)
-                _transport!.SendFromServerTo(connId, frame);
-            CountSend(entry, frame.Length);
+            {
+                var wire = _security.EncryptS2C(connId, frame); // ⑥ 逐连接加密（各连接独立 Seq，§11.12）
+                _transport!.SendFromServerTo(connId, wire); // ⑦
+                _traffic.AccountSendWire(entry.Owner, connId, wire.Length);
+            }
         }
 
         private ProtocolEntry ValidateSend(ModId sender, ProtocolId id, NetworkDirection direction)
@@ -237,17 +266,28 @@ namespace Com.Game.Network
             catch (NetworkException)
             {
                 _stats.DroppedQuota++; // §11.12 UGC 防护：超 MaxSize 丢弃并记违规
+                _traffic.RecordViolation(entry.Owner); // 对该 Mod 记违规（配合配额/挂起，§11.13）
                 throw;
             }
         }
 
-        // ---- 接收（§1.3 接收管线：帧头 → 协商校验 → Registry 校验 → codec 选择 → Decode → Handler） ----
+        // ---- 接收（§1.3 接收管线：解密 → 连接级收包预算 → 帧头 → 协商校验 → Registry 校验 → codec 选择 → Decode → Handler） ----
 
-        private void OnServerFrame(int connectionId, byte[] frame) =>
+        private void OnServerFrame(int connectionId, byte[] wire)
+        {
+            var frame = _security.DecryptC2S(connectionId, wire); // ⑥' 信封解析 + 认证（Relay 只见信封，§11.12）
+            if (frame is null) return; // DroppedAuth / DroppedReplay 已计数
+            if (!_traffic.AccountReceive(connectionId, frame.Length, enforce: true)) return; // ⑤' 连接级收包预算（§11.13）
             Dispatch(frame, new NetworkContext(connectionId, isServer: true));
+        }
 
-        private void OnClientFrame(byte[] frame) =>
+        private void OnClientFrame(byte[] wire)
+        {
+            var frame = _security.DecryptS2C(wire);
+            if (frame is null) return;
+            if (!_traffic.AccountReceive(NegotiationLayer.ClientConnId, frame.Length, enforce: false)) return; // 客户端只记账不执行
             Dispatch(frame, new NetworkContext(0, isServer: false));
+        }
 
         private void Dispatch(byte[] frame, in NetworkContext context)
         {
@@ -311,17 +351,6 @@ namespace Com.Game.Network
         // ---- 统计（§11.13） ----
 
         public NetworkStats GetStats() => _stats;
-
-        private void CountSend(ProtocolEntry entry, int bytes)
-        {
-            if (NegotiationLayer.IsHandshake(entry.Id)) return; // 握手/基础设施帧不计业务统计
-            _stats.BytesSent += bytes;
-            _stats.MessagesSent++;
-            _stats.BytesByMod.TryGetValue(entry.Owner, out var m);
-            _stats.BytesByMod[entry.Owner] = m + bytes;
-            _stats.MessagesByProtocol.TryGetValue(entry.Id, out var p);
-            _stats.MessagesByProtocol[entry.Id] = p + 1;
-        }
     }
 
     /// <summary>握手 hello 帧处理器：服务器侧收到客户端协议表 → 交集计算并回 result（§11.6）。</summary>
