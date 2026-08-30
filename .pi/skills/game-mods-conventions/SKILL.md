@@ -50,11 +50,24 @@ type：`feat` / `fix` / `build` / `chore` / `ci` / `docs` / `style` / `refactor`
 
 ## 目录结构
 
-- `design/` —— 设计文档（权威，`mod-architecture.md`）
+- `design/` —— 设计文档（权威：`Unity_Mod_Runtime_架构设计V2.0.md`；`mod-architecture.md` 为 V1 历史参考）
 - `runtime/` —— 运行时：**基础层（框架）+ 核心 Mod（`com.game.core`）**，不含任何游戏特定代码
 - `relay_server/` —— 中转服务（UDP 哑转发 + 控制面）
 - `mod_server/` —— Mod 注册与下载服务
-- `mods/` —— Mod 创作空间（第三方游戏 Mod，根目录以 modId 命名，如 `com.sample.pushbox`）
+- `mods/` —— Mod 创作空间（框架 Mod + 游戏 Mod，根目录以 modId 命名，如 `com.game.network`、`com.sample.pushbox`）
+- `replica_projects/` —— 可复刻的参照工程（只读）
+- `samples/` —— 复刻案例工程（与参照同名，内含拆分的 Mod 工程）
+
+## 样例复刻规范
+
+以真实开源工程验证 V2.0 框架能力（权威文档：`design/replica-conventions.md`，设计：`design/Unity_Mod_Runtime_架构设计V2.0.md`）：
+
+1. **Unity 版本统一 2022.3.62f3**（与原参照工程版本无关）；
+2. 参照工程放 `replica_projects/`（只读对标，不写入复刻代码）；
+3. 复刻工程放 `samples/`，与参照**同名**（如 `samples/MirrorUnityFPS/`）；
+4. 复刻目标文件夹下必须放置**拆分后的 Mod 工程**（`samples/<Case>/mods/<modId>/`，Manifest v2 + CONTRACT.md + src/，与 `mods/` 创作空间同构，遵守 V2.0 全部规则）。
+
+验收：`tests/run.sh` 全绿 + `verify-unity.sh` 通过 + 案例 README 对标清单逐项勾验。
 
 ## 领域约定
 
@@ -64,4 +77,4 @@ type：`feat` / `fix` / `build` / `chore` / `ci` / `docs` / `style` / `refactor`
 - **runtime 分层** = 基础层（框架）+ 核心 Mod（`com.game.core` 游戏基础、`com.game.protocol` 协议服务）；游戏 Mod 一律放 `mods/` 创作空间
 - **实现默认在 Mod** = Framework/核心 Mod 稳定不轻易改；一切实现默认在游戏 Mod 自身，仅当“游戏 Mod 无法实现”（引擎能力 / 跨 Mod 契约）才升级
 - **Mod 自带视图** = Mod 可自带 MonoBehaviour 表现层，运行时通用实例化，不感知具体游戏
-- 详细设计见 `design/mod-architecture.md`
+- 详细设计见 `design/Unity_Mod_Runtime_架构设计V2.0.md`（V2.0 权威）

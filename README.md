@@ -113,6 +113,8 @@ feature/* ──(PR 合并)──► develop ──(发布合并)──► maste
 │   ├── com.game.core         核心 Mod（游戏基础内容）
 │   ├── com.sample.hello      示例 Mod（ECS）
 │   └── com.sample.pushbox    示例 Mod（联机推箱子 + CONTRACT.md 契约文档）
+├── replica_projects/    可复刻的参照工程（只读对标，规范见 design/replica-conventions.md）
+├── samples/             复刻案例工程（与参照同名，内含拆分后的 Mod 工程）
 └── tests/               无头测试（纯 .NET，无需 Unity）
 ```
 
@@ -172,6 +174,17 @@ MOD_PACKAGES_DIR=./packages dotnet run
 - `GET /api/mods` 列出所有 Mod
 - `GET /api/mods/{modId}/{version}/download` 下载
 - `POST /api/resolve` 解析依赖闭包
+
+## 样例复刻
+
+以真实开源工程验证框架能力，规范见 [`design/replica-conventions.md`](design/replica-conventions.md)：
+
+1. Unity 版本统一 **2022.3.62f3**（与原工程版本无关）；
+2. 参照工程放 `replica_projects/`（只读）；
+3. 复刻工程放 `samples/`，与参照同名（如 `samples/MirrorUnityFPS/`）；
+4. 复刻目标文件夹下必须放置**拆分后的 Mod 工程**（`samples/<Case>/mods/com.xxx.*`，Manifest v2 + CONTRACT.md）。
+
+当前案例：[`MirrorUnityFPS` 可行性分析](design/replica-MirrorUnityFPS-analysis.md)。
 
 ## 设计要点
 

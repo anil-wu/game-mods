@@ -3,6 +3,7 @@
 > 样例：`replica_projects/MirrorUnityFPS`（Mirror + Unity FPS Starter Assets，Unity 6.0.30f1）
 > 问题：能否用 V2.0 框架（`design/Unity_Mod_Runtime_架构设计V2.0.md`）复刻？
 > 结论：**可以，且 V2.0 架构比样例结构更适合长期演化；但需先补一块框架能力——ECS Replication（§11.10）。**
+> 复刻规范：见 [`replica-conventions.md`](replica-conventions.md)（Unity 2022.3.62f3 / 产物在 `samples/MirrorUnityFPS/` / Mod 工程拆分）。
 
 ---
 
@@ -77,36 +78,39 @@
 
 ### 3.3 非代码差异
 
-- 样例用 **Unity 6**，我们是 **2022.3.62f3**——Starter Assets FPC 需替换（自研简单 FPS 控制器或移植，属 Mod 表现层内部事务，框架无感）。
-- 美术资源（模型/动画/TMP）不在仓库讨论范围，复刻以**机制等价**为目标。
+- 样例用 **Unity 6**，复刻规范 Rule 1 固定为 **2022.3.62f3**——Starter Assets FPC 不可直接搬用，以 Mod 表现层自研简单 FPS 控制器替换（框架无感）。
+- 美术资源（模型/动画/TMP）不使用原工程资源，复刻以**机制等价**为目标（占位资源即可）。
 
 ---
 
-## 4. 复刻 Mod 划分（映射 §15.4 模块拆分）
+## 4. 复刻 Mod 划分（映射 §15.4 模块拆分；落地于 `samples/MirrorUnityFPS/mods/`，规范 Rule 4）
 
 ```
-com.fps.player      移动/生命/本地输入/相机
-├── Shared:  PlayerState/Health 组件、move/damage 协议 Schema（+CONTRACT.md，Rule 19）
-├── Client:  输入采集、FPS 控制器视图、HUD 血量显示
-└── Server:  MoveSystem（权威校验）、HealthSystem、HitSystem
-
-com.fps.weapon      武器（射击/换弹/弹匣/特效）
-├── Shared:  WeaponState/Magazine 组件、fire/reload/hit 协议
-├── Client:  枪模/动画/枪口特效/命中贴花（Pool 归本 Mod）
-└── Server:  FireSystem（射线权威）、ReloadSystem（经 ModCall 查背包弹药，§12.9 模式 1）
-
-com.fps.inventory   拾取/背包/武器槽
-├── Shared:  Inventory/Item 组件、pickup/drop/move 协议
-├── Client:  背包 UI（窗口声明给 UI.Mod）、拖拽 ViewModel、拾取描边
-└── Server:  InventorySystem（权威）、PickupSystem；导出 inventory:* 能力供武器 Mod 调用
-
-com.fps.mapgen      程序化地图
-├── Shared:  seed 同步协议、地图数据 Schema
-├── Client:  按 seed 确定性重建表现（桥/地形）
-└── Server:  生成器（seed 权威），加入时全量下发
-
-com.fps.console     控制台命令（可选）
-└── Shared:  命令协议；Server: 解析 → ModCall 路由到各 Mod 能力
+samples/MirrorUnityFPS/
+├── README.md                     对标功能清单 + 进度 + 已知差异
+└── mods/
+    ├── com.fps.player      移动/生命/本地输入/相机
+    │   ├── Shared:  PlayerState/Health 组件、move/damage 协议 Schema（+CONTRACT.md，Rule 19）
+    │   ├── Client:  输入采集、FPS 控制器视图、HUD 血量显示
+    │   └── Server:  MoveSystem（权威校验）、HealthSystem、HitSystem
+    │
+    ├── com.fps.weapon      武器（射击/换弹/弹匣/特效）
+    │   ├── Shared:  WeaponState/Magazine 组件、fire/reload/hit 协议
+    │   ├── Client:  枪模/动画/枪口特效/命中贴花（Pool 归本 Mod）
+    │   └── Server:  FireSystem（射线权威）、ReloadSystem（经 ModCall 查背包弹药，§12.9 模式 1）
+    │
+    ├── com.fps.inventory   拾取/背包/武器槽
+    │   ├── Shared:  Inventory/Item 组件、pickup/drop/move 协议
+    │   ├── Client:  背包 UI（窗口声明给 UI.Mod）、拖拽 ViewModel、拾取描边
+    │   └── Server:  InventorySystem（权威）、PickupSystem；导出 inventory:* 能力供武器 Mod 调用
+    │
+    ├── com.fps.mapgen      程序化地图
+    │   ├── Shared:  seed 同步协议、地图数据 Schema
+    │   ├── Client:  按 seed 确定性重建表现（桥/地形）
+    │   └── Server:  生成器（seed 权威），加入时全量下发
+    │
+    └── com.fps.console     控制台命令（可选）
+        └── Shared:  命令协议；Server: 解析 → ModCall 路由到各 Mod 能力
 ```
 
 依赖 DAG：`player ← weapon ← inventory`，`mapgen` 独立，`console → *`（可选依赖）。
