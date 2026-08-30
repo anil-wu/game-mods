@@ -30,7 +30,8 @@ namespace Com.Fps.Console
             Context = context;
             LastOutput = "";
 
-            context.Mods.Export(RegisterCap, new RegisterHandler(RegisterCommand));
+            context.Mods.Export(RegisterCap, reader =>
+                DataCodec.Write(new object?[] { RegisterCommand(DataCodec.Read(reader)) }));
             if (context.HasServer)
                 context.Network.RegisterProtocol(new CommandProtocol(), new CommandHandler(context));
             if (context.HasClient)
@@ -47,8 +48,6 @@ namespace Com.Fps.Console
         }
 
         // ---- 命令注册（能力） ----
-
-        public delegate bool RegisterHandler(object? args);
 
         /// <summary>注册命令：args=[name string, modId string, capabilityId string]。</summary>
         private static bool RegisterCommand(object? args)
@@ -93,9 +92,12 @@ namespace Com.Fps.Console
 
             try
             {
-                // 基础设施委托调用：命令注册即授权，豁免依赖校验（§IModManager.InvokeRegistered）
-                var result = context.Mods.InvokeRegistered(cmd.Mod, cmd.Cap, args);
-                return $"[{name}] → {(result is null ? "ok" : result.ToString())}";
+                // 基础设施委托调用：命令注册即授权，豁免依赖校验（§IModManager.InvokeRegistered）；二进制 Rule 14
+                var buf = context.Mods.InvokeRegistered(cmd.Mod, cmd.Cap,
+                    DataCodec.Write(args is null ? null : new object?[] { args }));
+                var resultArr = DataCodec.Read(new PayloadReader(buf));
+                var resultText = resultArr.Length == 0 ? "ok" : resultArr[0]?.ToString() ?? "ok";
+                return $"[{name}] → {resultText}";
             }
             catch (Exception e)
             {

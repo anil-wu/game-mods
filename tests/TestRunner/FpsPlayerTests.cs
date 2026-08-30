@@ -135,29 +135,26 @@ namespace TestRunner
             var f = Fixture.Create();
             f.Tick(5);
 
-            // 经能力调用对靶标施加伤害（BCL 形状：object[] 行集，契约见 CONTRACT.md）
-            var all = (object[])f.PlayerCtx.Mods.Call(
-                PlayerId, PlayerMod.GetAllPositionsCap, null)!;
+            // 经能力调用对靶标施加伤害（object[] 行集，契约见 CONTRACT.md；二进制 Rule 14）
+            var all = ModCall.Invoke(f.PlayerCtx.Mods, PlayerId, PlayerMod.GetAllPositionsCap);
             Assert.Equal(3, all.Length);
             uint dummyId = 0;
             foreach (var row in all)
             {
-                var a = (object[])row;
-                if ((uint)a[0] != PlayerMod.LocalPlayerEntityId) { dummyId = (uint)a[0]; break; }
+                var a = (object?[])row!;
+                if ((uint)a[0]! != PlayerMod.LocalPlayerEntityId) { dummyId = (uint)a[0]!; break; }
             }
             Assert.True(dummyId != 0);
 
-            var died = (bool)f.PlayerCtx.Mods.Call(
-                PlayerId, PlayerMod.ApplyDamageCap,
-                new object[] { dummyId, 150, PlayerMod.LocalPlayerEntityId })!;
+            var died = ModCall.InvokeBool(f.PlayerCtx.Mods,
+                PlayerId, PlayerMod.ApplyDamageCap, dummyId, 150, PlayerMod.LocalPlayerEntityId);
             Assert.True(died);
             Assert.Equal(1, f.DiedEvents);
             Assert.Equal(dummyId, f.LastDead);
 
             // 死亡后 Alive=false（能力快照行：[5]=Alive）
-            var dto = (object[])f.PlayerCtx.Mods.Call(
-                PlayerId, PlayerMod.GetPositionCap, dummyId)!;
-            Assert.True(!(bool)dto[5]);
+            var dto = ModCall.Invoke(f.PlayerCtx.Mods, PlayerId, PlayerMod.GetPositionCap, dummyId);
+            Assert.True(!(bool)dto[5]!);
         }
 
         [Test]
@@ -165,9 +162,8 @@ namespace TestRunner
         {
             var f = Fixture.Create();
             f.Tick(5);
-            var died = (bool)f.PlayerCtx.Mods.Call(
-                PlayerId, PlayerMod.ApplyDamageCap,
-                new object[] { PlayerMod.LocalPlayerEntityId, 999, 0u })!;
+            var died = ModCall.InvokeBool(f.PlayerCtx.Mods,
+                PlayerId, PlayerMod.ApplyDamageCap, PlayerMod.LocalPlayerEntityId, 999, 0u);
             Assert.True(died);
 
             f.Tick(80); // 4s > RespawnDelay
@@ -188,7 +184,7 @@ namespace TestRunner
 
             public static void TryCall(IModContext ctx)
             {
-                try { ctx.Mods.Call(PlayerId, PlayerMod.GetAllPositionsCap, null); }
+                try { ModCall.Invoke(ctx.Mods, PlayerId, PlayerMod.GetAllPositionsCap); }
                 catch (System.Exception e) { CallError = e; }
             }
         }

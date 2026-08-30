@@ -54,8 +54,8 @@ namespace TestRunner
         private static string[] EnumerateNpcRows(Fixture f)
         {
             var rows = new System.Collections.Generic.List<string>();
-            var raw = (object[])f.Host.Manager.Get(NpcId)!.Context.Mods.Call(NpcId, NpcMod.GetAllNpcsCap, null)!;
-            foreach (var row in raw) rows.Add(string.Join("/", (object[])row));
+            var raw = ModCall.Invoke(f.Host.Manager.Get(NpcId)!.Context.Mods, NpcId, NpcMod.GetAllNpcsCap);
+            foreach (var row in raw) rows.Add(string.Join("/", (object?[])row!));
             return rows.ToArray();
         }
 
@@ -150,13 +150,13 @@ namespace TestRunner
             f.Tick(10);
 
             // 取 x<0 的 NPC 当前位置（AI 可能已追击 dummy），对齐弹道
-            var raw = (object[])f.Host.Manager.Get(NpcId)!.Context.Mods.Call(NpcId, NpcMod.GetAllNpcsCap, null)!;
+            var raw = ModCall.Invoke(f.Host.Manager.Get(NpcId)!.Context.Mods, NpcId, NpcMod.GetAllNpcsCap);
             uint npcId = 0;
             float nx = 0f, nz = 0f;
             foreach (var row in raw)
             {
-                var a = (object[])row;
-                if ((float)a[1] < 0f) { npcId = (uint)a[0]; nx = (float)a[1]; nz = (float)a[3]; break; }
+                var a = (object?[])row!;
+                if ((float)a[1]! < 0f) { npcId = (uint)a[0]!; nx = (float)a[1]!; nz = (float)a[3]!; break; }
             }
             Assert.True(npcId != 0, $"NPC 未找到: [{string.Join(", ", EnumerateNpcRows(f))}]");
 

@@ -74,11 +74,11 @@ namespace TestRunner
             /// <summary>取一个靶标实体 id（非本地玩家）。</summary>
             public uint DummyId()
             {
-                var all = (object[])PlayerCtx.Mods.Call(PlayerId, Com.Fps.Player.PlayerMod.GetAllPositionsCap, null)!;
+                var all = ModCall.Invoke(PlayerCtx.Mods, PlayerId, Com.Fps.Player.PlayerMod.GetAllPositionsCap);
                 foreach (var row in all)
                 {
-                    var a = (object[])row;
-                    if ((uint)a[0] != LocalPlayerId) return (uint)a[0];
+                    var a = (object?[])row!;
+                    if ((uint)a[0]! != LocalPlayerId) return (uint)a[0]!;
                 }
                 return 0;
             }
@@ -202,8 +202,8 @@ namespace TestRunner
             f.Tick(10);
 
             // 直接击杀本地玩家（ModCall）
-            f.PlayerCtx.Mods.Call(PlayerId, Com.Fps.Player.PlayerMod.ApplyDamageCap,
-                new object[] { f.LocalPlayerId, 999, 0u });
+            ModCall.Invoke(f.PlayerCtx.Mods, PlayerId, Com.Fps.Player.PlayerMod.ApplyDamageCap,
+                f.LocalPlayerId, 999, 0u);
 
             var ammoBefore = f.World.Get<WeaponState>(new Entity(f.LocalPlayerId)).Ammo;
             f.Fire(0f);

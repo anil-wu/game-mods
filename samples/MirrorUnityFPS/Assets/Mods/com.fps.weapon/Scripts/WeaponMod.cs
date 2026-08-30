@@ -1,5 +1,6 @@
 using Game.ECS;
 using Game.Mod.Contract;
+using Game.Mod.Contract.Wire;
 using Game.Mod.Runtime;
 
 namespace Com.Fps.Weapon
@@ -49,16 +50,17 @@ namespace Com.Fps.Weapon
             context.Ecs.RegisterComponent(typeof(WeaponState));
             context.Ecs.RegisterComponent(typeof(FireIntent));
 
-            context.Mods.Export(AddAmmoCap, new AddAmmoHandler(AddAmmo));
-            context.Mods.Export(CmdGiveAmmoCap, new AddAmmoHandler(_ =>
-                AddAmmo(new object[] { GetLocalShooterEntityId(context), 15 })));
+            context.Mods.Export(AddAmmoCap, reader =>
+                DataCodec.Write(new object?[] { AddAmmo(DataCodec.Read(reader)) }));
+            context.Mods.Export(CmdGiveAmmoCap, reader =>
+                DataCodec.Write(new object?[] { AddAmmo(new object?[] { GetLocalShooterEntityId(context), 15 }) }));
 
             // 控制台命令注册（可选依赖；经 console:register 能力，零跨 Mod 类型引用）
             var consoleId = new ModId("com.fps.console");
             if (context.Mods.IsLoaded(consoleId))
             {
                 context.Mods.Call(consoleId, new CapabilityId(consoleId, "register"),
-                    new object[] { "give_ammo", ModIdValue.Value, CmdGiveAmmoCap.Id.ToString() });
+                    DataCodec.Write(new object?[] { "give_ammo", ModIdValue.Value, CmdGiveAmmoCap.Id.ToString() }));
             }
 
             if (context.HasServer)
@@ -86,8 +88,6 @@ namespace Com.Fps.Weapon
             context.Log.Info($"武器 Mod '{context.Info.Id}' 已注销");
         }
 
-        public delegate bool AddAmmoHandler(object? args);
-
         /// <summary>补弹：args=[target u32, amount i32]，懒挂 WeaponState 后加弹（§12.9）。</summary>
         private static bool AddAmmo(object? args)
         {
@@ -106,8 +106,9 @@ namespace Com.Fps.Weapon
         /// <summary>取本地射手实体（经能力调用，契约：args=null 返回本地玩家行）。</summary>
         public static uint GetLocalShooterEntityId(IModContext context)
         {
-            var row = context.Mods.Call(PlayerModId, GetPositionCap, null) as object[];
-            return row is not null && row.Length >= 1 && row[0] is uint id ? id : 0u;
+            var buf = context.Mods.Call(PlayerModId, GetPositionCap, DataCodec.Write(null));
+            var row = DataCodec.Read(new PayloadReader(buf));
+            return row.Length >= 1 && row[0] is uint id ? id : 0u;
         }
 
         // ---- 协议 Handler ----

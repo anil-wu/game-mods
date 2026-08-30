@@ -99,8 +99,10 @@ namespace Com.Fps.Weapon
             var ctx = WeaponMod.Context!;
             if (ctx.Network.Replication.TryGetEntity(shot.ShooterNetId, out var shooterEntity))
             {
-                var row = ctx.Mods.Call(WeaponMod.PlayerModId, WeaponMod.GetPositionCap, shooterEntity.Id) as object[];
-                if (row is not null && row.Length >= 4 &&
+                var buf = ctx.Mods.Call(WeaponMod.PlayerModId, WeaponMod.GetPositionCap,
+                    Game.Mod.Contract.Wire.DataCodec.Write(new object?[] { shooterEntity.Id }));
+                var row = Game.Mod.Contract.Wire.DataCodec.Read(new Game.Mod.Contract.Wire.PayloadReader(buf));
+                if (row.Length >= 4 &&
                     row[1] is float x && row[2] is float y && row[3] is float z)
                     start = new Vector3(x, y + WeaponConfig.EyeHeight, z);
             }

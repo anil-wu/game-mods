@@ -1,4 +1,5 @@
 using Game.Mod.Contract;
+using Game.Mod.Contract.Wire;
 using Game.Mod.Runtime;
 
 namespace Com.Fps.Game
@@ -14,8 +15,6 @@ namespace Com.Fps.Game
         public static readonly ModId ModIdValue = new("com.fps.game");
         public static readonly CapabilityId StatusCap = new(ModIdValue, "status");
 
-        public delegate string StatusHandler(object? args);
-
         public static IModContext Context { get; private set; } = null!;
         public static bool IsRunning { get; private set; }
 
@@ -23,7 +22,8 @@ namespace Com.Fps.Game
         {
             Context = context;
             IsRunning = true;
-            context.Mods.Export(StatusCap, new StatusHandler(_ => IsRunning ? "running" : "stopped"));
+            context.Mods.Export(StatusCap, reader =>
+                DataCodec.Write(new object?[] { IsRunning ? "running" : "stopped" }));
             context.Log.Info($"FPS 游戏 '{context.Info.Id}' v{context.Info.Version} 已启动（依赖组件 Mod 已就绪）");
         }
 

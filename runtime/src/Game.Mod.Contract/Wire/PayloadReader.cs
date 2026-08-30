@@ -74,6 +74,17 @@ namespace Game.Mod.Contract.Wire
             return true;
         }
 
+        public bool TryReadDouble(int fieldId, out double value)
+        {
+            value = 0;
+            if (!TryFind(fieldId, WireType.Fixed64, out var end)) return false;
+            if (end - _cursor != 8) throw new PayloadFormatException($"字段 {fieldId} Fixed64 长度错误");
+            var lo = ReadRawU32(ref _cursor);
+            var hi = ReadRawU32(ref _cursor);
+            value = BitConverter.ToDouble(BitConverter.GetBytes(((ulong)hi << 32) | lo), 0); // netstandard2.1 无 UInt64BitsToDouble
+            return true;
+        }
+
         public bool TryReadString(int fieldId, out string value)
         {
             value = "";

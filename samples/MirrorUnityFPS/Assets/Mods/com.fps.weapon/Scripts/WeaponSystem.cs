@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using Game.ECS;
+using Game.Mod.Contract;
+using Game.Mod.Contract.Wire;
 using Game.Mod.Runtime;
 
 namespace Com.Fps.Weapon
@@ -172,9 +174,7 @@ namespace Com.Fps.Weapon
         private PlayerSnapshot[] GetAllPlayers()
         {
             // 能力 ABI：object[] 行集（字段布局见 com.fps.player/CONTRACT.md，Rule 19）
-            var raw = _context.Mods.Call(
-                WeaponMod.PlayerModId, WeaponMod.GetAllPositionsCap, null) as object[];
-            if (raw is null) return Array.Empty<PlayerSnapshot>();
+            var raw = InvokeCap(WeaponMod.PlayerModId, WeaponMod.GetAllPositionsCap, null);
             var result = new List<PlayerSnapshot>(raw.Length);
             foreach (var row in raw)
             {
@@ -186,10 +186,9 @@ namespace Com.Fps.Weapon
 
         private bool ApplyDamage(uint target, int amount, uint source)
         {
-            var result = _context.Mods.Call(
-                WeaponMod.PlayerModId, WeaponMod.ApplyDamageCap,
-                new object[] { target, amount, source });
-            return result is bool b && b;
+            var result = InvokeCap(WeaponMod.PlayerModId, WeaponMod.ApplyDamageCap,
+                new object?[] { target, amount, source });
+            return result.Length > 0 && result[0] is bool b && b;
         }
 
         // ---- 可选 NPC 目标（com.fps.npc 未加载则跳过，§12.4 Optional） ----
@@ -199,8 +198,7 @@ namespace Com.Fps.Weapon
         private NpcSnapshot[] GetAllNpcs()
         {
             if (!_context.Mods.IsLoaded(WeaponMod.NpcModId)) return Array.Empty<NpcSnapshot>();
-            var raw = _context.Mods.Call(WeaponMod.NpcModId, WeaponMod.NpcGetAllCap, null) as object[];
-            if (raw is null) return Array.Empty<NpcSnapshot>();
+            var raw = InvokeCap(WeaponMod.NpcModId, WeaponMod.NpcGetAllCap, null);
             _npcIds.Clear();
             var list = new List<NpcSnapshot>();
             foreach (var row in raw)
@@ -216,10 +214,16 @@ namespace Com.Fps.Weapon
 
         private bool ApplyNpcDamage(uint target, int amount, uint source)
         {
-            var result = _context.Mods.Call(
-                WeaponMod.NpcModId, WeaponMod.NpcApplyDamageCap,
-                new object[] { target, amount, source });
-            return result is bool b && b;
+            var result = InvokeCap(WeaponMod.NpcModId, WeaponMod.NpcApplyDamageCap,
+                new object?[] { target, amount, source });
+            return result.Length > 0 && result[0] is bool b && b;
+        }
+
+        /// <summary>跨 Mod 能力调用（Rule 14 二进制）：编码入参 → Call → 解码返回。</summary>
+        private object?[] InvokeCap(ModId target, CapabilityId cap, object?[]? args)
+        {
+            var buf = _context.Mods.Call(target, cap, DataCodec.Write(args));
+            return DataCodec.Read(new PayloadReader(buf));
         }
     }
 

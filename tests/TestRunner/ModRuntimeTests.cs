@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using Game.ECS;
 using Game.Mod.Contract;
+using Game.Mod.Contract.Wire;
 using Game.Mod.Runtime;
 
 namespace TestRunner
@@ -11,12 +12,18 @@ namespace TestRunner
     /// <summary>
     /// Mod 运行时测试：生命周期 / 热卸载管线 / ModCall / 资源域 / 池域 / 端侧裁剪。
     /// 测试 Mod 直接编译进测试程序集，经 manifest.Entry 精确解析入口。
+    /// ModCall 一律二进制（Rule 14）：DataCodec 编解码纯数据。
     /// </summary>
     public static class ModRuntimeTests
     {
         // ---- 测试 Mod ----
 
-        public delegate bool HasItemHandler(object? args);
+        /// <summary>测试辅助：二进制 ModCall（编码入参 → Call → 解码返回）。</summary>
+        private static object?[] InvokeCap(IModManager mods, ModId target, CapabilityId cap, params object?[] args)
+        {
+            var buf = mods.Call(target, cap, DataCodec.Write(args));
+            return DataCodec.Read(new PayloadReader(buf));
+        }
 
         public sealed class NoopSystem : ISystem
         {
@@ -45,7 +52,11 @@ namespace TestRunner
             {
                 Ctx = context;
                 Factory = new ItemFactory();
-                context.Mods.Export(HasItemCap, new HasItemHandler(args => args is int n && n > 0));
+                context.Mods.Export(HasItemCap, reader =>
+                {
+                    var a = DataCodec.Read(reader);
+                    return DataCodec.Write(new object?[] { a.Length > 0 && a[0] is int n && n > 0 });
+                });
                 context.Services.Register(StoreService, new object());
                 context.Pool.RegisterPool(ItemPool, Factory, prewarm: 2);
                 context.Ecs.RegisterSystem(new NoopSystem(), SystemSide.Shared);
@@ -63,7 +74,8 @@ namespace TestRunner
 
             public void Register(IModContext context)
             {
-                CallResult = (bool?)context.Mods.Call(InventoryMod.Id, InventoryMod.HasItemCap, 5);
+                var r = InvokeCap(context.Mods, InventoryMod.Id, InventoryMod.HasItemCap, 5);
+                CallResult = r.Length > 0 && r[0] is bool b && b;
                 context.Messages.Subscribe(InventoryMod.ItemAddedMsg, static (in Game.Messaging.MessageEnvelope _, Game.Mod.Contract.Wire.PayloadReader _) => { });
                 Subscribed = true;
             }
@@ -79,7 +91,7 @@ namespace TestRunner
 
             public void Register(IModContext context)
             {
-                try { context.Mods.Call(InventoryMod.Id, InventoryMod.HasItemCap, 1); }
+                try { InvokeCap(context.Mods, InventoryMod.Id, InventoryMod.HasItemCap, 1); }
                 catch (Exception e) { CallError = e; }
             }
 
@@ -146,10 +158,10 @@ namespace TestRunner
 
             // 目标未加载 → NoModException
             Assert.Throws<NoModException>(() =>
-                ctx.Mods.Call(new ModId("com.test.ghost"), new CapabilityId(new ModId("com.test.ghost"), "x"), null));
+                ctx.Mods.Call(new ModId("com.test.ghost"), new CapabilityId(new ModId("com.test.ghost"), "x"), DataCodec.Write(null)));
             // 能力未导出 → NoCapabilityException
             Assert.Throws<NoCapabilityException>(() =>
-                ctx.Mods.Call(InventoryMod.Id, new CapabilityId(InventoryMod.Id, "nonexistent"), null));
+                ctx.Mods.Call(InventoryMod.Id, new CapabilityId(InventoryMod.Id, "nonexistent"), DataCodec.Write(null)));
         }
 
         [Test]

@@ -104,8 +104,6 @@ namespace Com.Fps.Npc
             (-6f, 0.5f, 6f), (6f, 0.5f, 6f),
         };
 
-        public delegate object[] GetNpcsHandler(object? args);
-        public delegate bool NpcApplyDamageHandler(object? args);
 
         public void Register(IModContext context)
         {
@@ -119,8 +117,9 @@ namespace Com.Fps.Npc
             context.Network.Replication.RegisterArchetype(NpcArchetype,
                 new IComponentCodec[] { new NpcPosition3Codec(), new NpcHealthCodec() });
 
-            context.Mods.Export(GetAllNpcsCap, new GetNpcsHandler(_ => GetAllNpcs()));
-            context.Mods.Export(ApplyDamageCapSelf, new NpcApplyDamageHandler(NpcApplyDamage));
+            context.Mods.Export(GetAllNpcsCap, reader => DataCodec.Write(GetAllNpcs()));
+            context.Mods.Export(ApplyDamageCapSelf, reader =>
+                DataCodec.Write(new object?[] { NpcApplyDamage(DataCodec.Read(reader)) }));
 
             if (context.HasServer)
             {
@@ -245,7 +244,7 @@ namespace Com.Fps.Npc
                     {
                         b.Timer = NpcMod.AttackInterval;
                         _context.Mods.Call(NpcMod.PlayerModId, NpcMod.ApplyDamageCap,
-                            new object[] { target, NpcMod.AttackDamage, entityId });
+                            DataCodec.Write(new object?[] { target, NpcMod.AttackDamage, entityId }));
                     }
                 }
                 else
@@ -318,8 +317,8 @@ namespace Com.Fps.Npc
 
         private PlayerSnap[] GetAllPlayers()
         {
-            var raw = _context.Mods.Call(NpcMod.PlayerModId, NpcMod.GetAllPositionsCap, null) as object[];
-            if (raw is null) return Array.Empty<PlayerSnap>();
+            var buf = _context.Mods.Call(NpcMod.PlayerModId, NpcMod.GetAllPositionsCap, DataCodec.Write(null));
+            var raw = DataCodec.Read(new PayloadReader(buf));
             var list = new System.Collections.Generic.List<PlayerSnap>();
             foreach (var row in raw)
                 if (PlayerSnap.TryRead(row, out var snap)) list.Add(snap);

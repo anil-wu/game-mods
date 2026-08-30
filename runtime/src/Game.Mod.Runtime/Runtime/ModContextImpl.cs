@@ -312,22 +312,22 @@ namespace Game.Mod.Runtime
         public void Unload(ModId id) => _manager.Unload(id);
         public System.Collections.Generic.List<string> UnloadAll() => _manager.UnloadAll();
 
-        public void Export(CapabilityId id, Delegate handler)
+        public void Export(CapabilityId id, CapabilityHandler handler)
         {
             _ctx.ThrowIfInvalid();
             _manager.Export(_caller, id, handler);
         }
 
-        public object? Call(ModId target, CapabilityId id, object? args)
+        public PayloadBuffer Call(ModId target, CapabilityId id, in PayloadBuffer args)
         {
             _ctx.ThrowIfInvalid();
-            return _manager.Call(_caller, target, id, args);
+            return _manager.Call(_caller, target, id, in args);
         }
 
-        public object? InvokeRegistered(ModId target, CapabilityId id, object? args)
+        public PayloadBuffer InvokeRegistered(ModId target, CapabilityId id, in PayloadBuffer args)
         {
             _ctx.ThrowIfInvalid();
-            return _manager.InvokeRegistered(_caller, target, id, args);
+            return _manager.InvokeRegistered(_caller, target, id, in args);
         }
     }
 }

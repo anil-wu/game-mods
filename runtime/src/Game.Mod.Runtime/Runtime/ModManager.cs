@@ -7,6 +7,7 @@ using System.Reflection;
 using Game.ECS;
 using Game.Messaging;
 using Game.Mod.Contract;
+using Game.Mod.Contract.Wire;
 
 namespace Game.Mod.Runtime
 {
@@ -37,7 +38,7 @@ namespace Game.Mod.Runtime
     {
         private readonly Dictionary<ModId, ModObject> _loaded = new();
         private readonly List<ModId> _loadOrder = new(); // 真实加载顺序（依赖在前），UnloadAll 取其镜像
-        private readonly Dictionary<CapabilityId, (ModId Owner, Delegate Handler)> _capabilities = new();
+        private readonly Dictionary<CapabilityId, (ModId Owner, CapabilityHandler Handler)> _capabilities = new();
         private readonly List<ModCallTraceEntry> _callTrace = new(256);
         private int _callTraceHead;
         private int _callTraceCount;
@@ -356,7 +357,7 @@ namespace Game.Mod.Runtime
 
         // ---- ModCall（§12.11） ----
 
-        internal void Export(ModId caller, CapabilityId id, Delegate handler)
+        internal void Export(ModId caller, CapabilityId id, CapabilityHandler handler)
         {
             if (handler is null) throw new ArgumentNullException(nameof(handler));
             if (id.Mod != caller)
@@ -364,7 +365,7 @@ namespace Game.Mod.Runtime
             _capabilities[id] = (caller, handler);
         }
 
-        internal object? Call(ModId caller, ModId target, CapabilityId id, object? args)
+        internal PayloadBuffer Call(ModId caller, ModId target, CapabilityId id, in PayloadBuffer args)
         {
             // 规则 1：必须先声明依赖——未声明依赖的 Call 直接被 Core 拒绝（§12.11）
             if (caller != target)
@@ -378,14 +379,14 @@ namespace Game.Mod.Runtime
                     throw new ModDependencyException(
                         $"Mod '{caller}' 未在 Manifest 声明对 '{target}' 的依赖，能力调用被拒绝（§12.11 规则 1）");
             }
-            return Invoke(caller, target, id, args);
+            return Invoke(caller, target, id, in args);
         }
 
         /// <summary>基础设施委托调用：豁免依赖校验（"注册即授权"），仍做 NoMod/NoCapability 校验。</summary>
-        internal object? InvokeRegistered(ModId caller, ModId target, CapabilityId id, object? args)
-            => Invoke(caller, target, id, args);
+        internal PayloadBuffer InvokeRegistered(ModId caller, ModId target, CapabilityId id, in PayloadBuffer args)
+            => Invoke(caller, target, id, in args);
 
-        private object? Invoke(ModId caller, ModId target, CapabilityId id, object? args)
+        private PayloadBuffer Invoke(ModId caller, ModId target, CapabilityId id, in PayloadBuffer args)
         {
             // 规则 2：目标未加载 → NoModException；能力未导出 → NoCapabilityException
             if (!_loaded.ContainsKey(target))
@@ -394,7 +395,8 @@ namespace Game.Mod.Runtime
                 throw new NoCapabilityException(id);
 
             var start = Stopwatch.GetTimestamp();
-            var result = entry.Handler.DynamicInvoke(args); // 生成包装保证签名匹配（§15.3）
+            var reader = new PayloadReader(in args);
+            var result = entry.Handler(reader); // 二进制入 → 二进制出（Rule 14，§14.5）
             RecordCallTrace(caller, target, id, Stopwatch.GetTimestamp() - start);
             return result;
         }

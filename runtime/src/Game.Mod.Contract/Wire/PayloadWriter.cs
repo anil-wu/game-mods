@@ -43,6 +43,14 @@ namespace Game.Mod.Contract.Wire
             WriteRawU32(bits);
         }
 
+        public void WriteDouble(int fieldId, double value)
+        {
+            Header(fieldId, WireType.Fixed64);
+            var bits = BitConverter.ToUInt64(BitConverter.GetBytes(value), 0);
+            WriteRawU32((uint)(bits & 0xFFFFFFFF));
+            WriteRawU32((uint)(bits >> 32));
+        }
+
         public void WriteString(int fieldId, string value)
         {
             if (value is null) throw new ArgumentNullException(nameof(value));

@@ -1,5 +1,6 @@
 using System.Linq;
 using Game.Mod.Contract;
+using Game.Mod.Contract.Wire;
 using Game.Mod.Runtime;
 
 namespace Com.Game.ModStore
@@ -22,9 +23,6 @@ namespace Com.Game.ModStore
         /// <summary>能力：安装并启动指定 Mod（args = "modId@version" 字符串）。</summary>
         public static readonly CapabilityId InstallAndStartCap = new(ModIdValue, "install_and_start");
 
-        public delegate string[] ListModsHandler(object? args);
-        public delegate bool InstallAndStartHandler(object? args);
-
         /// <summary>商店服务（视图与测试的访问点；Mod 内部状态）。</summary>
         public static ModStoreService Service { get; private set; } = null!;
 
@@ -37,24 +35,31 @@ namespace Com.Game.ModStore
 
             Service = new ModStoreService(context, serverUrl, localModsDir);
 
-            // 导出能力（归属本 ModObject，卸载时自动撤销，§13.5）
-            context.Mods.Export(ListCap, new ListModsHandler(_ =>
-                Service.ListRemoteMods().GetAwaiter().GetResult()
-                    .Select(m => m.ToString()).ToArray()));
-            context.Mods.Export(InstallAndStartCap, new InstallAndStartHandler(args =>
+            // 导出能力（归属本 ModObject，卸载时自动撤销，§13.5；二进制 ABI，Rule 14）
+            context.Mods.Export(ListCap, reader =>
             {
-                if (!TryParseInstance(args as string, out var id, out var version)) return false;
-                try
+                var mods = Service.ListRemoteMods().GetAwaiter().GetResult()
+                    .Select(m => m.ToString()).ToArray();
+                return DataCodec.Write(mods);
+            });
+            context.Mods.Export(InstallAndStartCap, reader =>
+            {
+                var args = DataCodec.Read(reader);
+                var ok = false;
+                if (args.Length > 0 && TryParseInstance(args[0] as string, out var id, out var version))
                 {
-                    Service.InstallAndStart(id, version).GetAwaiter().GetResult();
-                    return true;
+                    try
+                    {
+                        Service.InstallAndStart(id, version).GetAwaiter().GetResult();
+                        ok = true;
+                    }
+                    catch (System.Exception e)
+                    {
+                        context.Log.Error($"[ModStore] 安装并启动失败: {e.Message}");
+                    }
                 }
-                catch (System.Exception e)
-                {
-                    context.Log.Error($"[ModStore] 安装并启动失败: {e.Message}");
-                    return false;
-                }
-            }));
+                return DataCodec.Write(new object?[] { ok });
+            });
 
             context.Log.Info($"Mod 商店 '{context.Info.Id}' v{context.Info.Version} 已注册（服务器: {serverUrl}，本地目录: {localModsDir}）");
         }

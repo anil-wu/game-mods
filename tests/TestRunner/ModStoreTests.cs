@@ -285,8 +285,8 @@ namespace TestRunner
 
             public void Register(IModContext context)
             {
-                Listed = ((string[]?)context.Mods.Call(
-                    ModStoreMod.ModIdValue, ModStoreMod.ListCap, null)) ?? Array.Empty<string>();
+                Listed = ModCall.Invoke(context.Mods, ModStoreMod.ModIdValue, ModStoreMod.ListCap)
+                    .Select(x => x?.ToString() ?? "").ToArray();
             }
 
             public void Unregister(IModContext context) { }

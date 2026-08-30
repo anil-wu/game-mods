@@ -1,5 +1,6 @@
 using Game.ECS;
 using Game.Mod.Contract;
+using Game.Mod.Contract.Wire;
 using Game.Mod.Runtime;
 
 namespace Com.Fps.Player
@@ -25,12 +26,6 @@ namespace Com.Fps.Player
             return true;
         }
     }
-
-    public delegate object? GetPositionHandler(object? args);
-    public delegate object[] GetAllPositionsHandler(object? args);
-    public delegate bool ApplyDamageHandler(object? args);
-    public delegate bool HealHandler(object? args);
-    public delegate bool CmdHandler(object? args);
 
     /// <summary>
     /// 玩家 Mod（com.fps.player）：移动 / 生命 / 生成 / 复制。
@@ -81,20 +76,24 @@ namespace Com.Fps.Player
             context.Network.Replication.RegisterArchetype(PlayerArchetype,
                 new IComponentCodec[] { new Position3Codec(), new HealthCodec(), new PlayerTagCodec(), new FacingCodec() });
 
-            // 能力导出（§12.11）
-            context.Mods.Export(GetPositionCap, new GetPositionHandler(GetPosition));
-            context.Mods.Export(GetAllPositionsCap, new GetAllPositionsHandler(_ => GetAllPositions()));
-            context.Mods.Export(ApplyDamageCap, new ApplyDamageHandler(ApplyDamage));
-            context.Mods.Export(HealCap, new HealHandler(Heal));
-            context.Mods.Export(CmdHealSelfCap, new CmdHandler(_ =>
-                Heal(new object[] { LocalPlayerEntityId, PlayerConfig.MaxHealth })));
+            // 能力导出（§12.11；二进制 ABI Rule 14：DataCodec 编解码纯数据，bytes 不藏引用）
+            context.Mods.Export(GetPositionCap, reader =>
+                DataCodec.Write(GetPosition(DataCodec.Read(reader)) as object?[]));
+            context.Mods.Export(GetAllPositionsCap, reader =>
+                DataCodec.Write(GetAllPositions()));
+            context.Mods.Export(ApplyDamageCap, reader =>
+                DataCodec.Write(new object?[] { ApplyDamage(DataCodec.Read(reader)) }));
+            context.Mods.Export(HealCap, reader =>
+                DataCodec.Write(new object?[] { Heal(DataCodec.Read(reader)) }));
+            context.Mods.Export(CmdHealSelfCap, reader =>
+                DataCodec.Write(new object?[] { Heal(new object?[] { LocalPlayerEntityId, PlayerConfig.MaxHealth }) }));
 
             // 控制台命令注册（可选依赖；零跨 Mod 类型引用）
             var consoleId = new ModId("com.fps.console");
             if (context.Mods.IsLoaded(consoleId))
             {
                 context.Mods.Call(consoleId, new CapabilityId(consoleId, "register"),
-                    new object[] { "heal_self", ModIdValue.Value, CmdHealSelfCap.Id.ToString() });
+                    DataCodec.Write(new object?[] { "heal_self", ModIdValue.Value, CmdHealSelfCap.Id.ToString() }));
             }
 
             if (context.HasServer)
@@ -157,7 +156,8 @@ namespace Com.Fps.Player
 
         private static object? GetPosition(object? args)
         {
-            var entityId = args is uint id ? id : LocalPlayerEntityId;
+            // args = object?[] [entityId?]（DataCodec 元组；空/首项非 uint = 本地玩家）
+            var entityId = args is object?[] a && a.Length > 0 && a[0] is uint id ? id : LocalPlayerEntityId;
             var e = new Entity(entityId);
             if (!World.TryGet<Position3>(e, out var pos)) return null;
             var yaw = World.TryGet<PlayerInput>(e, out var input) ? input.Yaw : 0f;

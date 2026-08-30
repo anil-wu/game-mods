@@ -159,8 +159,9 @@ namespace Com.Fps.Inventory
         /// <summary>本地玩家实体（经能力调用，零跨 Mod 类型引用）。</summary>
         public static uint LocalPlayerEntityId()
         {
-            var row = Context.Mods.Call(PlayerModId, GetPositionCap, null) as object[];
-            return row is not null && row.Length >= 1 && row[0] is uint id ? id : 0u;
+            var buf = Context.Mods.Call(PlayerModId, GetPositionCap, DataCodec.Write(null));
+            var row = DataCodec.Read(new PayloadReader(buf));
+            return row.Length >= 1 && row[0] is uint id ? id : 0u;
         }
 
         /// <summary>服务端拾取：校验存在/距离 → 施加效果 → 广播 → 销毁拾取物。</summary>
@@ -180,18 +181,19 @@ namespace Com.Fps.Inventory
                 // 拾取者（本地玩家）位置校验（2.5m 内）
                 var pickerId = LocalPlayerEntityId();
                 if (pickerId == 0) return;
-                var pickerRow = _context.Mods.Call(PlayerModId, GetPositionCap, pickerId) as object[];
-                if (pickerRow is null) return;
-                var px = (float)pickerRow[1]; var py = (float)pickerRow[2]; var pz = (float)pickerRow[3];
+                var pickerBuf = _context.Mods.Call(PlayerModId, GetPositionCap, DataCodec.Write(new object?[] { pickerId }));
+                var pickerRow = DataCodec.Read(new PayloadReader(pickerBuf));
+                if (pickerRow.Length < 4) return;
+                var px = (float)pickerRow[1]!; var py = (float)pickerRow[2]!; var pz = (float)pickerRow[3]!;
                 var pos = world.Get<ItemPosition3>(itemEntity);
                 var dx = pos.X - px; var dy = pos.Y - py; var dz = pos.Z - pz;
                 if (dx * dx + dy * dy + dz * dz > 2.5f * 2.5f) return;
 
                 // 施加效果（跨 Mod 能力调用）
                 if (tag.Kind == ItemKind.Health)
-                    _context.Mods.Call(PlayerModId, HealCap, new object[] { pickerId, tag.Amount });
+                    _context.Mods.Call(PlayerModId, HealCap, DataCodec.Write(new object?[] { pickerId, tag.Amount }));
                 else
-                    _context.Mods.Call(WeaponModId, AddAmmoCap, new object[] { pickerId, tag.Amount });
+                    _context.Mods.Call(WeaponModId, AddAmmoCap, DataCodec.Write(new object?[] { pickerId, tag.Amount }));
 
                 _context.Network.Broadcast(new PickedProtocol().Id,
                     new PickedEvent(netId, tag.Kind, tag.Amount));
