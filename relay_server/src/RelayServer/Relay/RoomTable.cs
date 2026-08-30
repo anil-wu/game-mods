@@ -25,7 +25,7 @@ public sealed class RoomTable
         }
     }
 
-    public bool TryGet(ulong id, out Room? room)
+    public bool TryGet(ulong id, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out Room? room)
     {
         lock (_lock) return _rooms.TryGetValue(id, out room);
     }

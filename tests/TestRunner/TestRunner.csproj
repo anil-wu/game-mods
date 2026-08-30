@@ -17,6 +17,8 @@
     <ProjectReference Include="../../runtime/src/Game.Mod.Runtime/Game.Mod.Runtime.csproj" />
     <Compile Include="../../mods/com.game.core/src/**/*.cs" />
     <Compile Include="../../mods/com.game.network/src/**/*.cs" />
+    <!-- Relay 两端线格式互通测试：relay_server 源码编进共享测试程序集（§8.3），零依赖独立可编译 -->
+    <Compile Include="../../relay_server/src/RelayServer/**/*.cs" Exclude="../../relay_server/src/RelayServer/Program.cs;../../relay_server/src/RelayServer/Properties/**;**/obj/**;**/bin/**" />
     <Compile Include="../../mods/com.game.ui/src/**/*.cs" />
     <Compile Include="../../mods/com.game.modstore/src/**/*.cs" Exclude="../../mods/com.game.modstore/src/ModStoreView.cs" />
     <Compile Include="../../mods/com.sample.pushbox/src/**/*.cs" Exclude="../../mods/com.sample.pushbox/src/PushBoxView.cs" />

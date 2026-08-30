@@ -13,6 +13,12 @@ public static class RelayProtocol
     public const int MaxDatagram = HeaderSize + MaxPayload;
     /// <summary>房主固定 connId。</summary>
     public const ushort HostConnId = 0;
+
+    /// <summary>
+    /// 1 预留给 Host 本地客户端（§11.3 回环，不占 Relay 编号）；
+    /// 节点为远端客户端分配 ConnId 从 2 起——避免与 Host 本地客户端 connId 冲突（RelayWire 契约）。
+    /// </summary>
+    public const ushort FirstRemoteConnId = 2;
 }
 
 /// <summary>Relay 隧道报文。</summary>

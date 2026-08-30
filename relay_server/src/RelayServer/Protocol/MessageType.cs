@@ -14,4 +14,6 @@ public enum MessageType : byte
     DataRaw = 8,
     Ping = 9,
     Pong = 10,
+    /// <summary>退房（客户端/房主主动离开；节点收到后移除 peer 并通知 Host PeerLeft）。</summary>
+    Leave = 11,
 }

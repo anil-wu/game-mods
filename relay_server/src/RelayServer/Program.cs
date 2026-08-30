@@ -32,31 +32,22 @@ var app = builder.Build();
 string Endpoint() => $"{publicHost}:{relayPort}";
 
 // ---------- 控制面 HTTP ----------
+// 响应统一为管道分隔文本（§6.3）：joinCode|roomId|relayEndpoint|tokenB64|expiryMs——
+// 客户端零依赖解析（netstandard2.1 无 System.Text.Json），人类可读；JSON 仅保留在 /health。
+string PipeText(AllocationResult r) =>
+    $"{r.JoinCode}|{r.RoomId}|{Endpoint()}|{Convert.ToBase64String(r.Token)}|{r.Expiry.ToUnixTimeMilliseconds()}";
+
 app.MapPost("/allocate", () =>
 {
     var r = allocation.Allocate();
-    return Results.Ok(new
-    {
-        joinCode = r.JoinCode,
-        roomId = r.RoomId,
-        relayEndpoint = Endpoint(),
-        token = Convert.ToBase64String(r.Token),
-        expiresAt = r.Expiry,
-    });
+    return Results.Text(PipeText(r));
 });
 
 app.MapPost("/resolve", (ResolveRequest req) =>
 {
     if (!allocation.TryResolve(req.JoinCode, out var r))
-        return Results.NotFound(new { error = "invalid join code" });
-    return Results.Ok(new
-    {
-        joinCode = r.JoinCode,
-        roomId = r.RoomId,
-        relayEndpoint = Endpoint(),
-        token = Convert.ToBase64String(r.Token),
-        expiresAt = r.Expiry,
-    });
+        return Results.NotFound("invalid join code");
+    return Results.Text(PipeText(r));
 });
 
 app.MapGet("/health", () => Results.Ok(new { status = "ok", rooms = rooms.Count }));
