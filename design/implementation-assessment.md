@@ -78,6 +78,29 @@ ModCall（跨 Mod 能力调用，§12.11）此前用 `Delegate + object + Dynami
 
 ---
 
+## 3B. 契约测试向量机制（§14.11.3，已完成）
+
+### 背景
+
+Rule 19（契约=文档，零程序集共享）下，消费方各自**重复定义**解析器——带来解析发散风险
+（owner 改字节布局，消费方手写解析器静默失效）。§14.11.3 要求 owner **随版本发布测试向量**作为补偿。
+
+### 改动
+
+- 框架新增 `Game.Mod.Contract.Wire.TestVector`（样例字段 + 规范编码字节 + `DecodeFields`）。
+- owner Mod 发布向量：`com.fps.player.PlayerTestVectors`（position_row）、`com.fps.npc.NpcTestVectors`（npc_row）。
+- 消费方 CI 校验：`tests/TestRunner/TestVectorTests`——
+  - `weapon.PlayerSnapshot` 与 `npc.PlayerSnap` **两个独立消费方**对同一字节解出一致结果（字段级跳读 `[4]=Yaw` 也一致）；
+  - `weapon.NpcSnapshot` 解析 npc owner 字节；
+  - **漂移负向用例**：owner 违反 append-only 改布局 → 消费方旧解析器检出。
+
+### 验证
+
+- 无头测试 **113/113 全绿**（110 + 3 个测试向量测试）；Unity 编译零错误。
+- 第一方在共享测试程序集跑；UGC 场景向量应序列化进包（样例 + 字节 hex）供消费方离线校验（后续）。
+
+---
+
 ## 4. 剩余缺口与路线（按价值排序，HybridCLR 已推迟）
 
 | 优先级 | 事项 | 说明 |
@@ -87,6 +110,7 @@ ModCall（跨 Mod 能力调用，§12.11）此前用 `Delegate + object + Dynami
 | 推迟 | **Source Generator**（§14.3/§15.3 生成 Codec/包装） | HybridCLR AOT 泛型安全主动机；当前手写 Codec 够用，随 HybridCLR 一并做 |
 | 推迟 | **HybridCLR 接入** | 现为字节加载 + 同副本重入（§11.14.1）；用户明确推迟 |
 | 推迟 | Dependency Features（§12.5）/ 资源三级 Scope（§6）/ 消息版本订阅（§14.6） | UGC 工业化，随平台化一并做 |
+| ~~推迟~~ | ~~契约测试向量（§14.11.3）~~ | **已完成**（见 §3B） |
 
 > **说明**：无泛型 ABI（Rule 13）与二进制通信（Rule 14）已就位——这正是 HybridCLR 的两块地基
 > （AOT 泛型安全 + 引用泄漏物理防护）。后续接入 HybridCLR 时，ABI 层无需改造，只需处理

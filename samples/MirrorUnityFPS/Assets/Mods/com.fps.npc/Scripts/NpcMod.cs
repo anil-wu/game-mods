@@ -295,7 +295,7 @@ namespace Com.Fps.Npc
         }
 
         /// <summary>玩家快照（BCL 形状解析，见 player CONTRACT.md）。</summary>
-        private readonly struct PlayerSnap
+        internal readonly struct PlayerSnap // internal：供测试向量机制（§14.11.3）跨消费方一致性校验
         {
             public readonly uint EntityId;
             public readonly float X, Y, Z;

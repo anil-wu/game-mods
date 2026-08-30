@@ -2562,6 +2562,16 @@ Manifest 表达模块划分：
   （`PayloadBuffer ↔ PayloadBuffer` + 通用 `DataCodec`），与消息总线同一套读写原语——"bytes 不可能藏对象引用"
   的物理保证对 ModCall 同样成立。Rule 1–20 全部满足（逐项对照见 `implementation-assessment.md`）。
 
+### V2.0.3（2026-08，契约测试向量机制落地）
+
+§14.11.3 的"owner 发布测试向量"从义务落成机制：
+
+- 框架新增 `Game.Mod.Contract.Wire.TestVector`（样例字段 + 规范编码字节 + `DecodeFields`）。
+- owner Mod 发布向量：`com.fps.player.PlayerTestVectors`（position_row）、`com.fps.npc.NpcTestVectors`（npc_row）。
+- 消费方 CI 校验：`tests/TestRunner/TestVectorTests`——`weapon.PlayerSnapshot` 与 `npc.PlayerSnap`
+  两个独立消费方对同一字节解出一致结果；含漂移负向用例（owner 破坏布局 → 消费方旧解析器检出）。
+- 第一方在共享测试程序集跑；UGC 场景向量应序列化进包（样例 + 字节 hex）供消费方 CI 离线校验。
+
 ## 19. 结语
 
 这套设计下：
