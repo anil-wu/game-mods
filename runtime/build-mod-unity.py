@@ -63,11 +63,15 @@ def main():
             continue  # 非本复刻工程的 Mod（框架/示例）
         with open(mod_json, encoding="utf-8") as f:
             boot = json.load(f).get("boot", True)
+        dst = os.path.join(streaming, mod_id)
         if boot:
-            dst = os.path.join(streaming, mod_id)
             shutil.rmtree(dst, ignore_errors=True)
             shutil.copytree(os.path.join(DIST_MODS, mod_id), dst)
             print(f">>> {mod_id} → {dst}")
+        else:
+            # boot=false：不进核心启动集（商店分发），清除可能的历史残留
+            shutil.rmtree(dst, ignore_errors=True)
+            print(f">>> {mod_id} 不进启动集（boot=false）")
 
 
 if __name__ == "__main__":

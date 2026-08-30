@@ -6,14 +6,33 @@
     "shared": "com.fps.player.dll"
   },
   "dependencies": [
-    { "id": "com.game.core", "version": ">=1.0.0" },
-    { "id": "com.game.network", "version": ">=1.0.0" },
-    { "id": "com.fps.console", "version": ">=0.1.0", "optional": true }
+    {
+      "id": "com.game.core",
+      "version": ">=1.0.0"
+    },
+    {
+      "id": "com.game.network",
+      "version": ">=1.0.0"
+    },
+    {
+      "id": "com.fps.console",
+      "version": ">=0.1.0",
+      "optional": true
+    }
   ],
   "network": {
     "protocols": [
-      { "id": "input", "version": 1, "direction": "ClientToServer" },
-      { "id": "local", "version": 1, "direction": "ServerToClient" }
+      {
+        "id": "input",
+        "version": 1,
+        "direction": "ClientToServer"
+      },
+      {
+        "id": "local",
+        "version": 1,
+        "direction": "ServerToClient"
+      }
     ]
-  }
+  },
+  "boot": false
 }

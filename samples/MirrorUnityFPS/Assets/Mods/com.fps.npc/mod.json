@@ -2,13 +2,31 @@
   "id": "com.fps.npc",
   "version": "0.1.0",
   "entry": "Com.Fps.Npc.NpcMod",
-  "modules": { "shared": "com.fps.npc.dll" },
+  "modules": {
+    "shared": "com.fps.npc.dll"
+  },
   "dependencies": [
-    { "id": "com.game.core", "version": ">=1.0.0" },
-    { "id": "com.game.network", "version": ">=1.0.0" },
-    { "id": "com.fps.player", "version": ">=0.1.0" }
+    {
+      "id": "com.game.core",
+      "version": ">=1.0.0"
+    },
+    {
+      "id": "com.game.network",
+      "version": ">=1.0.0"
+    },
+    {
+      "id": "com.fps.player",
+      "version": ">=0.1.0"
+    }
   ],
   "network": {
-    "protocols": [ { "id": "state", "version": 1, "direction": "ServerToClient" } ]
-  }
+    "protocols": [
+      {
+        "id": "state",
+        "version": 1,
+        "direction": "ServerToClient"
+      }
+    ]
+  },
+  "boot": false
 }
