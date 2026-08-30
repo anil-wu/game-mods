@@ -32,7 +32,7 @@ namespace Game.Runtime
             if (bundle is null) return null;
             // 新复刻结构 assets/mods/{modId}/…；兼容旧的 assets/modassets/{modId}/…
             var name = AssetName(contentRoot, localPath);
-            var asset = bundle.LoadAsset(name);
+            UnityEngine.Object? asset = bundle.LoadAsset(name);
             if (asset is null)
                 asset = bundle.LoadAsset(name.Replace("assets/mods/", "assets/modassets/"));
             if (asset is null)
