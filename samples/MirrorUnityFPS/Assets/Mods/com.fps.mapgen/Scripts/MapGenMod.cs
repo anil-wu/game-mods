@@ -41,22 +41,37 @@ namespace Com.Fps.MapGen
             ClientSeed = DefaultSeed;
         }
 
-        /// <summary>确定性障碍物生成（LCG）：同 seed 两端生成完全一致。</summary>
+        /// <summary>确定性障碍物生成（LCG）：同 seed 两端生成完全一致。
+        /// 布局：周边建筑带（4 角 + 4 边中点围成 arena）+ 后方散落建筑（避开出生区），建筑尺寸 3~6m（真实结构感）。</summary>
         public static (float X, float Y, float Z, float Sx, float Sy, float Sz)[] GenerateBoxes(int seed)
         {
             var state = (uint)seed;
-            var boxes = new (float, float, float, float, float, float)[10];
-            for (var i = 0; i < boxes.Length; i++)
+            var boxes = new (float, float, float, float, float, float)[12];
+            var i = 0;
+
+            // 周边建筑带（围合成 arena：四角 + 四边中点）
+            var spots = new (float X, float Z)[]
+            {
+                (-16f, -16f), (-16f, 16f), (16f, -16f), (16f, 16f),
+                (0f, -16f), (0f, 16f), (-16f, 0f), (16f, 0f),
+            };
+            foreach (var (ex, ez) in spots)
             {
                 state = state * 1664525u + 1013904223u; // LCG
-                var gx = ((state >> 8) % 40) - 20f;    // [-20, 20)
+                var s = 3.5f + ((state >> 8) % 25) * 0.1f; // 3.5 ~ 6m
+                boxes[i++] = (ex, s / 2f, ez, s, s, s);
+            }
+
+            // 后方散落建筑（z < -3 区域，避开出生点/靶标/NPC 的前方战场）
+            while (i < boxes.Length)
+            {
                 state = state * 1664525u + 1013904223u;
-                var gz = ((state >> 8) % 40) - 20f;
-                // 避免落在出生点/靶标附近
-                if (Math.Abs(gx) < 2f && Math.Abs(gz) < 2f) gx = 10f;
+                var gx = ((state >> 8) % 30) - 15f;   // [-15, 15)
                 state = state * 1664525u + 1013904223u;
-                var s = 0.8f + ((state >> 8) % 20) * 0.1f; // 0.8 ~ 2.7
-                boxes[i] = (gx, s / 2f, gz, s, s, s);
+                var gz = ((state >> 8) % 12) - 14f;    // [-14, -3) 后方
+                state = state * 1664525u + 1013904223u;
+                var s = 3f + ((state >> 8) % 20) * 0.1f; // 3 ~ 5m
+                boxes[i++] = (gx, s / 2f, gz, s, s, s);
             }
             return boxes;
         }

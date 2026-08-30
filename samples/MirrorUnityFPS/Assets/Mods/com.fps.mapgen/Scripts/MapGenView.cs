@@ -29,14 +29,15 @@ namespace Com.Fps.MapGen
 
             var boxes = MapGenMod.GenerateBoxes(MapGenMod.ClientSeed);
             var i = 0;
-            foreach (var (x, y, z, _, _, _) in boxes)
+            foreach (var (x, _, z, _, sy, _) in boxes)
             {
                 var prefab = LoadPrefab(Buildings[i++ % Buildings.Length]);
                 var go = prefab is not null ? Instantiate(prefab) : GameObject.CreatePrimitive(PrimitiveType.Cube);
                 go.name = "Building";
                 go.transform.SetParent(transform);
-                // 建筑原 50m 高，归一化到 ~8m；base 贴地
-                if (prefab is not null) NormalizeHeight(go, 8f);
+                // 按盒高度缩放（与障碍盒尺寸一致，不再固定 8m）；base 贴地
+                if (prefab is not null) NormalizeHeight(go, sy);
+                else go.transform.localScale = new Vector3(sy, sy, sy);
                 go.transform.position = new Vector3(x, 0f, z);
                 if (prefab is null) go.GetComponent<Renderer>().material.color = new Color(0.55f, 0.45f, 0.35f);
             }

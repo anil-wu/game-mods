@@ -70,7 +70,8 @@ namespace TestRunner
             for (var i = 0; i < a.Length; i++)
                 Assert.Equal(a[i].X, b[i].X); // 同 seed 完全一致
             var c = MapGenMod.GenerateBoxes(1);
-            Assert.True(a[0].X != c[0].X); // 不同 seed 不同布局
+            // 不同 seed 不同布局：周长位置固定，建筑尺寸随 seed 变
+            Assert.True(a[0].Sy != c[0].Sy, "不同 seed 应产生不同建筑尺寸");
         }
 
         [Test]

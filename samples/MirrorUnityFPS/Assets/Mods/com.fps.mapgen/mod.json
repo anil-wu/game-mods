@@ -1,6 +1,6 @@
 {
   "id": "com.fps.mapgen",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "entry": "Com.Fps.MapGen.MapGenMod",
   "modules": {
     "shared": "com.fps.mapgen.dll"

@@ -60,11 +60,13 @@ public sealed class ModRegistry
         }
     }
 
+    /// <summary>列出全部 Mod，每 modId 只取最新版本（商店列表不呈现历史版本）。</summary>
     public List<ModManifest> ListAll()
     {
         lock (_lock)
         {
-            return _index.Values.SelectMany(v => v.Values).Select(r => r.Manifest).ToList();
+            // SortedDictionary 按键（版本）升序 → Values.Last() = 每 Mod 的最高版本
+            return _index.Values.Select(v => v.Values.Last().Manifest).ToList();
         }
     }
 
