@@ -12,6 +12,7 @@ namespace Game.ECS
         private uint _nextId = 1;
         private readonly HashSet<uint> _entities = new();
         private readonly Dictionary<Type, IComponentStore> _stores = new();
+        private readonly Dictionary<uint, Game.Mod.Contract.ModId> _entityOwners = new();
 
         public int EntityCount => _entities.Count;
 
@@ -22,11 +23,31 @@ namespace Game.ECS
             return new Entity(id);
         }
 
+        /// <summary>创建归属某 Mod 的实体（ModObject 资源边界：Mod 卸载时由 Core 强制销毁，§4/§7）。</summary>
+        public Entity CreateEntity(Game.Mod.Contract.ModId owner)
+        {
+            var entity = CreateEntity();
+            _entityOwners[entity.Id] = owner;
+            return entity;
+        }
+
         public void Destroy(Entity entity)
         {
             if (!_entities.Remove(entity.Id)) return;
+            _entityOwners.Remove(entity.Id);
             foreach (var store in _stores.Values)
                 store.RemoveEntity(entity.Id);
+        }
+
+        /// <summary>销毁某 Mod 拥有的全部实体（卸载流程调用，不依赖 Mod 自觉）。返回销毁数量。</summary>
+        public int DestroyAll(Game.Mod.Contract.ModId owner)
+        {
+            var stale = new List<uint>();
+            foreach (var (id, o) in _entityOwners)
+                if (o == owner) stale.Add(id);
+            foreach (var id in stale)
+                Destroy(new Entity(id));
+            return stale.Count;
         }
 
         public bool Exists(Entity entity) => _entities.Contains(entity.Id);

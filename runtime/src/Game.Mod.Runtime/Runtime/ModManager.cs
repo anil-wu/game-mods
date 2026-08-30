@@ -236,6 +236,9 @@ namespace Game.Mod.Runtime
             // 5. ECS 系统移除（§9.2：World 属于 Runtime，Mod 只注册）
             _systems.RemoveAll(modId);
 
+            // 5.1 销毁本 Mod 拥有的全部实体（ModObject 资源边界，§4/§7）
+            _world.DestroyAll(modId);
+
             // 6. 服务注册全部撤销（含框架 Mod 基础设施）
             _services.UnregisterAll(modId);
 

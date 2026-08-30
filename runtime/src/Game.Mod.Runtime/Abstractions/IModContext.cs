@@ -87,6 +87,9 @@ namespace Game.Mod.Runtime
 
         /// <summary>注册系统（归属当前 ModObject，卸载时移除）。</summary>
         void RegisterSystem(ISystem system, SystemSide side);
+
+        /// <summary>创建归属当前 Mod 的实体（ModObject 资源边界：卸载时由 Core 强制销毁，§4/§7）。</summary>
+        Entity CreateEntity();
     }
 
     /// <summary>Client 环境能力（§6：Client/Server/Host 是 Context 能力）。预留权限边界扩展点。</summary>

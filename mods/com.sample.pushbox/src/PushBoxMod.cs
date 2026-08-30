@@ -53,21 +53,22 @@ namespace Com.Sample.PushBox
             }
 
             // 3. 创建游戏实体（示例简化：真实游戏应在会话开始时由 Server 逻辑生成）
+            //    经 context.Ecs.CreateEntity 创建：实体归属本 ModObject，卸载时由 Core 强制销毁（§4/§7）
             if (context.HasServer)
             {
                 var world = context.Ecs.World;
-                var box = world.CreateEntity();
+                var box = context.Ecs.CreateEntity();
                 world.Add(box, new Box());
                 world.Add(box, new Position { X = 0 });
                 world.Add(box, new Velocity { V = 0 });
 
-                var left = world.CreateEntity();
+                var left = context.Ecs.CreateEntity();
                 world.Add(left, new Player { Side = PlayerSide.Left });
 
-                var right = world.CreateEntity();
+                var right = context.Ecs.CreateEntity();
                 world.Add(right, new Player { Side = PlayerSide.Right });
 
-                var session = world.CreateEntity();
+                var session = context.Ecs.CreateEntity();
                 world.Add(session, new Session
                 {
                     Box = box.Id,

@@ -87,6 +87,29 @@ namespace TestRunner
         }
 
         [Test]
+        public static void EntityOwnership_DestroyAll_ByOwner()
+        {
+            // 实体归属 ModObject：卸载时按 owner 强制销毁（§4/§7 ModObject 资源边界）
+            var w = new World();
+            var ownerA = new ModId("com.test.a");
+            var ownerB = new ModId("com.test.b");
+
+            var a1 = w.CreateEntity(ownerA);
+            var a2 = w.CreateEntity(ownerA);
+            var b1 = w.CreateEntity(ownerB);
+            var free = w.CreateEntity(); // 无 owner（框架内部实体）
+            w.Add(a1, new Pos { X = 1 });
+
+            Assert.Equal(4, w.EntityCount);
+            Assert.Equal(2, w.DestroyAll(ownerA));
+            Assert.True(!w.Exists(a1) && !w.Exists(a2));
+            Assert.True(!w.Has<Pos>(a1)); // 组件随实体清除
+            Assert.True(w.Exists(b1) && w.Exists(free));
+            Assert.Equal(2, w.EntityCount);
+            Assert.Equal(0, w.DestroyAll(ownerA)); // 幂等
+        }
+
+        [Test]
         public static void SystemGroup_SideFiltering()
         {
             var w = new World();

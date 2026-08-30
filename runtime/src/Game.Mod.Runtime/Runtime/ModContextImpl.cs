@@ -161,6 +161,12 @@ namespace Game.Mod.Runtime
             _ctx.ThrowIfInvalid();
             _systems.Add(system, side, _owner);
         }
+
+        public Entity CreateEntity()
+        {
+            _ctx.ThrowIfInvalid();
+            return World.CreateEntity(_owner);
+        }
     }
 
     internal sealed class NetworkContextFacade : INetworkContext

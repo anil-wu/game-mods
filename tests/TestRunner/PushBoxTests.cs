@@ -149,6 +149,41 @@ namespace TestRunner
         }
 
         [Test]
+        public static void Reload_AfterUnload_WorldIsClean()
+        {
+            // 退出再进入：旧实体必须随卸载销毁，重进后只有一个新 Session（视图/模拟不挂旧实体）
+            var f = Fixture.Create();
+            f.Push(PlayerSide.Left, true);
+            f.Tick(50);
+            var world = f.Host.World; // 卸载后静态桥清空，须用 host 持有的 World
+            var oldSessionId = PushBoxMod.SessionEntityId;
+
+            f.PushBoxCtx.Mods.Unload(PushBoxId);
+
+            // 旧实体已销毁
+            Assert.True(!world.Exists(new Entity(oldSessionId)));
+            Assert.Equal(0, world.EntityCount);
+
+            // 同一 host 重装（模拟"再进入游戏"）
+            f.Host.Load(ModManifest.Parse(RepoPaths.ModJson("com.sample.pushbox")),
+                typeof(PushBoxMod).Assembly, RepoPaths.ModDir("com.sample.pushbox"));
+            var ctx2 = f.Host.Manager.Get(PushBoxId)!.Context;
+
+            var sessionCount = 0;
+            foreach (var _ in world.Store<Session>().All())
+                sessionCount++;
+            Assert.Equal(1, sessionCount); // 无残留旧 Session
+            Assert.True(PushBoxMod.SessionEntityId != oldSessionId);
+
+            // 新会话可操作：输入 → 模拟 → 判胜
+            ctx2.Network.SendToServer(new PushInputProtocol().Id, new PushInput(PlayerSide.Left, true));
+            for (var i = 0; i < 400; i++) f.Host.Tick(0.05f);
+            var session = world.Get<Session>(new Entity(PushBoxMod.SessionEntityId));
+            Assert.Equal(GamePhase.Won, session.Phase);
+            Assert.Equal(PlayerSide.Left, PushBoxMod.ClientWinner);
+        }
+
+        [Test]
         public static void Unload_CleansNetworkAndMessages()
         {
             var f = Fixture.Create();
