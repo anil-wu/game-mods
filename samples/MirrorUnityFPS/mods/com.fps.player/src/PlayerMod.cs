@@ -29,6 +29,7 @@ namespace Com.Fps.Player
     public delegate object? GetPositionHandler(object? args);
     public delegate object[] GetAllPositionsHandler(object? args);
     public delegate bool ApplyDamageHandler(object? args);
+    public delegate bool HealHandler(object? args);
 
     /// <summary>
     /// 玩家 Mod（com.fps.player）：移动 / 生命 / 生成 / 复制。
@@ -44,6 +45,7 @@ namespace Com.Fps.Player
         public static readonly CapabilityId GetPositionCap = new(ModIdValue, "get_position");
         public static readonly CapabilityId GetAllPositionsCap = new(ModIdValue, "get_all_positions");
         public static readonly CapabilityId ApplyDamageCap = new(ModIdValue, "apply_damage");
+        public static readonly CapabilityId HealCap = new(ModIdValue, "heal");
 
         // 静态桥（视图访问，Mod 内部状态）
         public static World World { get; private set; } = null!;
@@ -80,6 +82,7 @@ namespace Com.Fps.Player
             context.Mods.Export(GetPositionCap, new GetPositionHandler(GetPosition));
             context.Mods.Export(GetAllPositionsCap, new GetAllPositionsHandler(_ => GetAllPositions()));
             context.Mods.Export(ApplyDamageCap, new ApplyDamageHandler(ApplyDamage));
+            context.Mods.Export(HealCap, new HealHandler(Heal));
 
             if (context.HasServer)
             {
@@ -160,6 +163,18 @@ namespace Com.Fps.Player
                 list.Add(CapabilityShapes.PositionRow(entityId, pos.X, pos.Y, pos.Z, yaw, alive));
             }
             return list.ToArray();
+        }
+
+        /// <summary>治疗：args=[target u32, amount i32]，返回是否有效（§12.9 快照/纯数据）。</summary>
+        private static bool Heal(object? args)
+        {
+            if (args is not object[] a || a.Length < 2 || a[0] is not uint target || a[1] is not int amount)
+                return false;
+            var e = new Entity(target);
+            if (!World.TryGet<Health>(e, out var hp)) return false;
+            hp.Current = System.Math.Min(hp.Max, hp.Current + amount);
+            World.Add(e, hp);
+            return true;
         }
 
         private static bool ApplyDamage(object? args)

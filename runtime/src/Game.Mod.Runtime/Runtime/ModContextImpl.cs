@@ -249,6 +249,9 @@ namespace Game.Mod.Runtime
         public bool TryGetEntity(uint networkId, out Game.ECS.Entity entity) =>
             Runtime.TryGetEntity(networkId, out entity);
 
+        public bool TryGetServerEntity(uint networkId, out Game.ECS.Entity entity) =>
+            Runtime.TryGetServerEntity(networkId, out entity);
+
         public bool TryGetNetworkId(Game.ECS.Entity entity, out uint networkId) =>
             Runtime.TryGetNetworkId(entity, out networkId);
     }

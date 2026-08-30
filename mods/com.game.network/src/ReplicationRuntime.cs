@@ -173,6 +173,18 @@ namespace Com.Game.Network
             return false;
         }
 
+        /// <summary>Server：NetworkId → 权威实体（服务端 Handler 判定/修改用）。</summary>
+        public bool TryGetServerEntity(uint networkId, out Entity entity)
+        {
+            if (_serverTracked.TryGetValue(networkId, out var tracked))
+            {
+                entity = tracked.Entity;
+                return true;
+            }
+            entity = default;
+            return false;
+        }
+
         public bool TryGetNetworkId(Entity entity, out uint networkId)
         {
             if (_clientEntityToNetId.TryGetValue(entity.Id, out networkId)) return true;

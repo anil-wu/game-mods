@@ -64,6 +64,9 @@ namespace Game.Mod.Runtime
         /// <summary>Client：NetworkId → 本地实体映射查询（NetworkId 由 Server 分配、会话内稳定）。</summary>
         bool TryGetEntity(uint networkId, out Entity entity);
 
+        /// <summary>Server：NetworkId → 权威实体（服务端 Handler 判定/修改用；TryGetEntity 副本优先，勿用于服务端逻辑）。</summary>
+        bool TryGetServerEntity(uint networkId, out Entity entity);
+
         /// <summary>Client：本地实体 → NetworkId。</summary>
         bool TryGetNetworkId(Entity entity, out uint networkId);
     }

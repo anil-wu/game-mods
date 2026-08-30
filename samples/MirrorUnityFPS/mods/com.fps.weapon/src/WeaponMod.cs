@@ -19,6 +19,9 @@ namespace Com.Fps.Weapon
         public static readonly CapabilityId GetAllPositionsCap = new(PlayerModId, "get_all_positions");
         public static readonly CapabilityId ApplyDamageCap = new(PlayerModId, "apply_damage");
 
+        /// <summary>本 Mod 导出的能力（供拾取/控制台等）。</summary>
+        public static readonly CapabilityId AddAmmoCap = new(ModIdValue, "add_ammo");
+
         // 静态桥（视图访问，Mod 内部状态）
         public static World World { get; private set; } = null!;
         public static IModContext Context { get; private set; } = null!;
@@ -39,6 +42,8 @@ namespace Com.Fps.Weapon
 
             context.Ecs.RegisterComponent(typeof(WeaponState));
             context.Ecs.RegisterComponent(typeof(FireIntent));
+
+            context.Mods.Export(AddAmmoCap, new AddAmmoHandler(AddAmmo));
 
             if (context.HasServer)
             {
@@ -63,6 +68,23 @@ namespace Com.Fps.Weapon
             LastShot = null;
             ClientWeaponStates.Clear();
             context.Log.Info($"武器 Mod '{context.Info.Id}' 已注销");
+        }
+
+        public delegate bool AddAmmoHandler(object? args);
+
+        /// <summary>补弹：args=[target u32, amount i32]，懒挂 WeaponState 后加弹（§12.9）。</summary>
+        private static bool AddAmmo(object? args)
+        {
+            if (args is not object[] a || a.Length < 2 || a[0] is not uint target || a[1] is not int amount)
+                return false;
+            var e = new Entity(target);
+            if (!World.TryGet<WeaponState>(e, out var state))
+            {
+                state = new WeaponState { Ammo = 0, MaxAmmo = WeaponConfig.MaxAmmo };
+            }
+            state.Ammo = System.Math.Min(state.MaxAmmo, state.Ammo + amount);
+            World.Add(e, state);
+            return true;
         }
 
         /// <summary>取本地射手实体（经能力调用，契约：args=null 返回本地玩家行）。</summary>

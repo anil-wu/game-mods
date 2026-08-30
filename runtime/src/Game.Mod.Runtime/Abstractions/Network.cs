@@ -152,6 +152,9 @@ namespace Game.Mod.Runtime
         /// <summary>Client：NetworkId → 本地实体。</summary>
         bool TryGetEntity(uint networkId, out Game.ECS.Entity entity);
 
+        /// <summary>Server：NetworkId → 权威实体。</summary>
+        bool TryGetServerEntity(uint networkId, out Game.ECS.Entity entity);
+
         /// <summary>Client：本地实体 → NetworkId。</summary>
         bool TryGetNetworkId(Game.ECS.Entity entity, out uint networkId);
 

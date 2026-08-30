@@ -142,6 +142,12 @@ namespace Com.Game.Network
             return Replication is not null && Replication.TryGetNetworkId(entity, out networkId);
         }
 
+        public bool TryGetServerEntity(uint networkId, out global::Game.ECS.Entity entity)
+        {
+            entity = default;
+            return Replication is not null && Replication.TryGetServerEntity(networkId, out entity);
+        }
+
         public bool IsRegistered(ProtocolId id) => _protocols.ContainsKey(id);
 
         public int ProtocolCountOf(ModId owner)
