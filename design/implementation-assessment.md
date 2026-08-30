@@ -8,9 +8,13 @@
 ## 1. 总体结论
 
 **核心 Mod Runtime 架构（V2.0 的心脏）高度保真落地，Rule 1–20 全部满足。**
-最难、最体现架构价值的部分——资源边界、卸载强制回收、能力隔离、无泛型 ABI、二进制通信——均已实现并有测试实证（110/110 全绿 + Unity Play 冒烟通过）。
+最难、最体现架构价值的部分——资源边界、卸载强制回收、能力隔离、无泛型 ABI、二进制通信——均已实现并有测试实证（**159/159 全绿** + Unity Play 冒烟通过）。
 
-剩余欠账集中在**网络高级特性**与 **UGC 工业化工具链**（Source Generator），属于"广度与工业化"层面，而非架构正确性层面；随 HybridCLR / UGC 平台化一并推进。
+**网络分层补齐已完成**（§11.6 版本协商 / §11.8 兴趣管理 / §11.11 Relay Provider / §11.12 加密 / §11.13 流量配额，
+见 §3C）：五个网络子系统全部落地，跨端（relay_server ↔ Network.Mod）线格式经双实现互通测试锁定（Rule 19）。
+
+剩余欠账集中在 **UGC 工业化工具链**（Source Generator）与 Replication 增量/量化，属于"广度与工业化"层面，
+而非架构正确性层面；随 HybridCLR / UGC 平台化一并推进。
 
 ---
 
@@ -101,11 +105,70 @@ Rule 19（契约=文档，零程序集共享）下，消费方各自**重复定�
 
 ---
 
+## 3C. 网络分层补齐（§11.6 / §11.8 / §11.11 / §11.12 / §11.13，已完成）
+
+### 背景
+
+架构文档 §11 中五个尚未落地的网络子系统，按实现设计 `network-layering-impl.md` 分三次提交落地。
+核心库最小 ABI 加法（`ClientReady` 事件 / `RegisterInterest` / `RegisterLegacyCodec` / `ConfigureBudget` /
+`NetworkBudget` / `NetworkStats` additive 字段），业务 Mod 对外 ABI（`INetworkContext`）**零变化**（§7.3 承诺全部守住）。
+
+### 提交
+
+| 提交 | 内容 |
+|---|---|
+| `f862831` | docs(network)：网络分层补齐实现设计（五子系统文件/线格式/测试方案） |
+| `7b8b650` | feat(network)：协议版本协商（§11.6）+ 兴趣管理（§11.8） |
+| `bf239a2` | feat(network)：加密（§11.12）+ 流量统计/配额/限流（§11.13） |
+| `3e237e1` | feat(network)：Relay Provider（§11.11）+ relay_server 对接 + 全链路 @ Relay |
+
+### 各层实现要点
+
+1. **版本协商（§11.6）**——`Negotiation/`：hello/result 两条握手协议（字段编号线格式，NetworkRuntimeImpl `Start` 自我注册）；
+   每连接状态机（Pending→Negotiated/Rejected）+ 交集计算 + required 判定（缺必需 Mod → reason=2 + 缺失清单；
+   核心协议无交集 → reason=1 整体拒连；表现层无交集 → 降级禁用）；**废弃窗口硬规则**：`RegisterLegacyCodec`
+   只保留"当前 + 上一个版本"，协商到 legacy 版本时服务器用旧 codec 编解码、帧头写协商版本；后注册协议默认接受
+   （保既有 fixture 全绿的关键决策）；未协商连接上的业务帧 → `DroppedNotNegotiated` 防御。
+2. **兴趣管理（§11.8）**——`Interest/`：`IInterestManager`（非泛型 `bool IsRelevant(int, ProtocolId, in object)`）；
+   Broadcast 候选连接 = 已协商 ∧ 未禁用 ∧ 兴趣放行，**过滤在 Encode 之前**（省带宽）；默认无 manager = 全房间广播
+   （现状语义零变化）；`SendToClient` 单播不过兴趣；owner 校验 + `UnregisterAll` 清理（Rule 20）。
+3. **加密（§11.12）**——`Security/`：`INetworkSecurityProvider`（算法可替换）+ 默认 `AesHmacSecurityProvider`
+   （AES-CBC + HMAC-SHA256 截断 16B，encrypt-then-MAC，仅 netstandard2.1 表面 API，零第三方依赖）；`SecurityLayer`
+   信封 `[Magic][Flags][KeyId][Seq u64][CipherLen][密文][Tag]`——**明文帧（含 ProtocolId）整体进加密，Relay 只见信封**；
+   每方向滑动窗口防重放（256 位 bitmap，容忍乱序丢包）；**密钥只存在于 SecurityLayer**：引导 `Enable(psk)` 后经
+   `HMAC-SHA256(psk, "conn:"||connId||role)` 派生进 provider，`INetworkContext` 无任何密钥成员（§11.12 硬要求）；
+   未 Enable = 明文兼容模式（显式启用，无隐式行为变化）。
+4. **流量统计/配额/限流（§11.13）**——`Traffic/`：Connection/Mod/Protocol 三级 1s 窗口统计 + `NetworkStats`
+   新字段（additive）；`NetworkBudget`（maxMessageSize/maxPacketRate/maxBandwidth/maxConnectionBandwidth/
+   throttleSuspendMs，按 Mod 配置，null=恢复默认）；发送侧速率/带宽预算 + 服务器侧连接级收包预算
+   （恶意/失控客户端防线）；窗口内违规 ≥3 → 挂起 ThrottleSuspendMs；**统计无条件记录、超限才执行**；
+   框架基础设施（com.game.network 握手/复制协议）免配额；Mod 级逻辑/传输两档（加密前后）。
+5. **Relay Provider（§11.11）**——`Relay/`：`RelayClientTransport`（INetworkTransport 实现：BindHost/BindClient、
+   本地客户端内存回环 connId=1、后台泵线程 + 测试 PumpOnce 同步驱动、Ping/Pong 心跳、Stop 发 Leave）；
+   `RelayWire` 线格式**客户端侧独立实现**（Rule 19 可重复定义，不引用 relay_server 程序集，报文 ≤1400B，
+   Type 含新增 Leave=11）；`RelayAllocationClient` 控制面 HTTP（/allocate /resolve /health，管道分隔文本零依赖解析）；
+   `RelaySessions`（CreateSession 房间码 / JoinSession）+ `AutoPathResolver`（先 Direct 失败回退 Relay，§11.3）；
+   relay_server 小改（Leave、HandleLeave、PeerLeft 通知、RemoveClient/IsFull、connId 从 2 起、管道分隔响应）。
+
+### 验证
+
+- 无头测试 **159/159 全绿**（113 既有 + 新增 46：Negotiation 10 / Interest 8 / Security 7 / Traffic 6 / Relay 13 /
+  LayeredPipeline 2——全链路 @ Loopback 与 @ Relay 各一遍，五层组合不破坏彼此）。
+- `dotnet build relay_server/RelayServer.sln` 0 警告 0 错误；`bash runtime/verify-unity.sh` 编译 + Play 冒烟通过
+  （boot Mods 经新框架重建后加载正常）。
+- 架构合规复核（QA `design/qa-network-layering.md`）：Rule 5（业务 Mod 零直接网络依赖）/ 13（无泛型 ABI）/
+  14（二进制）/ 15（Role×Path 正交）/ 16（xxHash32 稳定哈希）/ 17（Network.Mod pinned 禁热卸载）/
+  19（RelayWire 文档契约 + 双实现互通测试）全部守住；密钥仅存 Network.Mod 内（INetworkContext 反射检查无密钥成员）。
+- 遗留观察项（非阻断，见 QA 报告）：混合版本客户端同房间时 Broadcast 帧按首个候选连接版本编码（设计 §1.2 明示折衷）；
+  Relay 心跳路径未入测试（生产后台泵原型期，PumpOnce 模式不启用心跳）。
+
+---
+
 ## 4. 剩余缺口与路线（按价值排序，HybridCLR 已推迟）
 
 | 优先级 | 事项 | 说明 |
 |---|---|---|
-| 看需求 | **网络分层补齐**（§11.6 版本协商 / §11.8 兴趣管理 / §11.9 完整管线 / §11.11 Relay / §11.12 加密） | 仅当要真·互联网联机才需要；单机/局域网 Loopback+Mirror 已够 |
+| ~~看需求~~ | ~~网络分层补齐（§11.6 / §11.8 / §11.11 / §11.12 / §11.13）~~ | **已完成**（见 §3C）：协商/兴趣/加密/流量/Relay 五子系统落地，159/159 全绿 + Unity 冒烟通过 |
 | 看需求 | **Replication 增量/量化**（§11.10 ChangedOnly / 定点化） | 实体数 < 几十时全量快照够用 |
 | 推迟 | **Source Generator**（§14.3/§15.3 生成 Codec/包装） | HybridCLR AOT 泛型安全主动机；当前手写 Codec 够用，随 HybridCLR 一并做 |
 | 推迟 | **HybridCLR 接入** | 现为字节加载 + 同副本重入（§11.14.1）；用户明确推迟 |
