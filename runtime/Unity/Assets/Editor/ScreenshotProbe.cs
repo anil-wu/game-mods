@@ -1,7 +1,6 @@
 using System.IO;
 using UnityEditor;
 using UnityEngine;
-using UnityEngine.Rendering.Universal;
 
 namespace Game.Runtime.Editor
 {
@@ -24,7 +23,6 @@ namespace Game.Runtime.Editor
         {
             var camGo = new GameObject("ProbeCam");
             var cam = camGo.AddComponent<Camera>();
-            camGo.AddComponent<UniversalAdditionalCameraData>();
             cam.transform.position = new Vector3(0, 3f, -8f);
             cam.transform.LookAt(new Vector3(0, 1.5f, 0));
             cam.clearFlags = CameraClearFlags.SolidColor;

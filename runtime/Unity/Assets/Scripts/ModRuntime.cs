@@ -21,8 +21,7 @@ namespace Game.Runtime
             Host = new ModRuntimeHost(RuntimeRole.Host, new UnityLog(),
                 resourceBackend: new UnityAssetBundleBackend());
 
-            // URP 主相机（宿主层创建，含 UniversalAdditionalCameraData——否则 URP 整屏洋红；
-            // Mod 视图只消费 Camera.main，不依赖 URP 程序集）
+            // 主相机（宿主层创建；内置管线，Mod 视图只消费 Camera.main）
             EnsureUrpMainCamera();
             Host.Manager.ModLoaded += InstantiateViews;
             Host.Manager.ModUnloaded += DestroyViews;
@@ -50,16 +49,27 @@ namespace Game.Runtime
             Initialized = errors.Count == 0;
         }
 
-        /// <summary>创建 URP 就绪的主相机（若场景无相机）。</summary>
+        /// <summary>创建主相机 + 方向光（若场景没有）。内置管线，无 URP 附加组件。</summary>
         private static void EnsureUrpMainCamera()
         {
-            if (Camera.main is not null) return;
-            var go = new GameObject("Main Camera");
-            go.tag = "MainCamera";
-            go.AddComponent<Camera>();
-            go.AddComponent<UnityEngine.Rendering.Universal.UniversalAdditionalCameraData>();
-            go.AddComponent<AudioListener>();
-            Debug.Log("[ModRuntime] 已创建 URP 主相机");
+            if (Camera.main is null)
+            {
+                var go = new GameObject("Main Camera");
+                go.tag = "MainCamera";
+                go.AddComponent<Camera>();
+                go.AddComponent<AudioListener>();
+                Debug.Log("[ModRuntime] 已创建主相机");
+            }
+            // 场景无光照 → Standard 材质全黑；提供基础方向光
+            if (Object.FindObjectOfType<Light>() is null)
+            {
+                var lightGo = new GameObject("Main Directional Light");
+                var light = lightGo.AddComponent<Light>();
+                light.type = LightType.Directional;
+                light.intensity = 1.1f;
+                lightGo.transform.rotation = Quaternion.Euler(50, -30, 0);
+                Debug.Log("[ModRuntime] 已创建方向光");
+            }
         }
 
         /// <summary>视图归属 ModObject：实例化按 Mod 追踪，卸载即销毁（热卸载不残留野视图）。</summary>
