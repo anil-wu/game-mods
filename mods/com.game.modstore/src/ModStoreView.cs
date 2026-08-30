@@ -6,15 +6,21 @@ namespace Com.Game.ModStore
 {
     /// <summary>
     /// Mod 商店视图（MonoBehaviour，OnGUI 占位 UI）：
-    /// 呈现 mod_server 上的 Mod 列表 → 一键"安装并启动"。
+    /// 折叠 = 右上角商店图标；点击图标 = 打开居中列表；列表右上角 × 关闭。
     /// 由运行时通用实例化；UI.Mod 接入 UGUI 绑定后应迁移为正式窗口（§10）。
     /// </summary>
     public sealed class ModStoreView : MonoBehaviour
     {
+        private const float IconSize = 48f;
+        private const float WindowWidth = 560f;
+        private const float WindowHeight = 440f;
+
         private RemoteModInfo[] _mods = Array.Empty<RemoteModInfo>();
         private string _serverUrl = "";
         private string _busy = "";
         private Vector2 _scroll;
+        private bool _open;
+        private Texture2D? _icon;
 
         private void Awake()
         {
@@ -26,29 +32,68 @@ namespace Com.Game.ModStore
 
         private void OnGUI()
         {
-            const float w = 460f;
-            GUILayout.BeginArea(new Rect(Screen.width - w - 12, 12, w, Screen.height - 24), GUI.skin.box);
+            if (!_open)
+            {
+                DrawStoreIcon();
+                return;
+            }
+            DrawStoreWindow();
+        }
+
+        // ---- 折叠态：右上角商店图标 ----
+
+        private void DrawStoreIcon()
+        {
+            _icon ??= CreateStoreIcon();
+            var rect = new Rect(Screen.width - IconSize - 12f, 12f, IconSize, IconSize);
+            if (GUI.Button(rect, _icon))
+                _open = true;
+        }
+
+        // ---- 展开态：居中列表窗口 ----
+
+        private void DrawStoreWindow()
+        {
+            var rect = new Rect(
+                (Screen.width - WindowWidth) / 2f,
+                (Screen.height - WindowHeight) / 2f,
+                WindowWidth, WindowHeight);
+
+            GUILayout.BeginArea(rect, GUI.skin.box);
+
+            // 标题栏 + 右上角关闭按钮
+            GUILayout.BeginHorizontal();
             GUILayout.Label("<b>Mod 商店</b>");
+            GUILayout.FlexibleSpace();
+            if (GUILayout.Button("X", GUILayout.Width(28)))
+            {
+                _open = false;
+                GUILayout.EndHorizontal();
+                GUILayout.EndArea();
+                return;
+            }
+            GUILayout.EndHorizontal();
             GUILayout.Space(4);
 
             // 服务器地址 + 刷新
             GUILayout.BeginHorizontal();
             GUILayout.Label("服务器", GUILayout.Width(44));
-            _serverUrl = GUILayout.TextField(_serverUrl, GUILayout.MinWidth(220));
+            _serverUrl = GUILayout.TextField(_serverUrl, GUILayout.MinWidth(260));
             GUI.enabled = _busy.Length == 0;
             if (GUILayout.Button("刷新列表", GUILayout.Width(80)))
                 Run(() => ModStoreMod.Service.ListRemoteMods(), mods => _mods = mods);
             GUI.enabled = true;
             GUILayout.EndHorizontal();
 
+            GUILayout.Space(4);
+
             // 列表
-            _scroll = GUILayout.BeginScrollView(_scroll);
+            _scroll = GUILayout.BeginScrollView(_scroll, GUILayout.Height(WindowHeight - 130f));
             foreach (var mod in _mods)
             {
                 GUILayout.BeginHorizontal(GUI.skin.box);
-                var loaded = ModStoreMod.Service is not null &&
-                             FindLoaded(mod.Id.Value);
-                GUILayout.Label(mod.ToString(), GUILayout.MinWidth(220));
+                var loaded = FindLoaded(mod.Id.Value);
+                GUILayout.Label(mod.ToString(), GUILayout.MinWidth(240));
                 GUILayout.FlexibleSpace();
                 if (loaded)
                 {
@@ -73,9 +118,10 @@ namespace Com.Game.ModStore
             GUILayout.EndArea();
         }
 
+        // ---- 逻辑（与之前一致） ----
+
         private static bool FindLoaded(string modId)
         {
-            // 经商店服务所在上下文查询（视图与服务同属一个 Mod 程序集）
             return ModStoreMod.Service is not null
                 && global::Game.Mod.Contract.ModId.TryParse(modId, out var id)
                 && ModStoreMod.Service.IsModLoaded(id);
@@ -124,6 +170,60 @@ namespace Com.Game.ModStore
                     _busy = $"失败: {e.GetBaseException().Message}";
                 }
             }, TaskScheduler.FromCurrentSynchronizationContext());
+        }
+
+        // ---- 程序化商店图标（像素购物车，无需美术资源） ----
+
+        private static Texture2D CreateStoreIcon()
+        {
+            const int size = 48;
+            var tex = new Texture2D(size, size, TextureFormat.RGBA32, false)
+            {
+                filterMode = FilterMode.Point,
+            };
+
+            var bg = new Color(0.16f, 0.47f, 0.86f, 1f);
+            var fg = Color.white;
+            var pixels = new Color[size * size];
+            for (var i = 0; i < pixels.Length; i++) pixels[i] = bg;
+
+            // 12x10 像素购物车
+            string[] cart =
+            {
+                "##..........",
+                "##..........",
+                "##########..",
+                ".########...",
+                ".#.#.#.#.#..",
+                ".########...",
+                "..######....",
+                "............",
+                "..##..##....",
+                "..##..##....",
+            };
+
+            const int scale = 3;
+            var offsetX = (size - 12 * scale) / 2;
+            var offsetY = (size - 10 * scale) / 2;
+            for (var y = 0; y < cart.Length; y++)
+            {
+                for (var x = 0; x < cart[y].Length; x++)
+                {
+                    if (cart[y][x] != '#') continue;
+                    for (var dy = 0; dy < scale; dy++)
+                    for (var dx = 0; dx < scale; dx++)
+                    {
+                        var px = offsetX + x * scale + dx;
+                        var py = offsetY + y * scale + dy;
+                        if (px >= 0 && px < size && py >= 0 && py < size)
+                            pixels[(size - 1 - py) * size + px] = fg; // 纹理 Y 轴向上
+                    }
+                }
+            }
+
+            tex.SetPixels(pixels);
+            tex.Apply();
+            return tex;
         }
     }
 }
