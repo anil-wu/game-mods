@@ -35,7 +35,26 @@ namespace Game.Runtime
             var asset = bundle.LoadAsset(name);
             if (asset is null)
                 asset = bundle.LoadAsset(name.Replace("assets/mods/", "assets/modassets/"));
+            if (asset is null)
+                asset = LoadByStem(bundle, localPath);
             return asset;
+        }
+
+        /// <summary>
+        /// 兜底：按文件名 stem 匹配。Unity 打包时带空格的资源名会在空格处截断
+        /// （如 "Sci-fi_character_unity_blue Variant.prefab" → "…blue"），
+        /// 精确名匹配失败时用双向前缀模糊匹配（兼容截断/大小写/空格差异）。
+        /// </summary>
+        private static object? LoadByStem(AssetBundle bundle, string localPath)
+        {
+            var stem = Path.GetFileNameWithoutExtension(localPath).ToLowerInvariant();
+            foreach (var n in bundle.GetAllAssetNames())
+            {
+                var nstem = Path.GetFileNameWithoutExtension(n).ToLowerInvariant();
+                if (nstem == stem || nstem.StartsWith(stem) || stem.StartsWith(nstem))
+                    return bundle.LoadAsset(n);
+            }
+            return null;
         }
 
         public void Release(object resource)
