@@ -65,4 +65,4 @@ samples/MirrorUnityFPS/
 
 | 参照工程 | 复刻工程 | 分析 | 状态 |
 |---|---|---|---|
-| `replica_projects/MirrorUnityFPS` | `samples/MirrorUnityFPS` | [可行性分析](replica-MirrorUnityFPS-analysis.md) | 待启动（前置：ECS Replication，§11.10） |
+| `replica_projects/MirrorUnityFPS` | `samples/MirrorUnityFPS` | [可行性分析](replica-MirrorUnityFPS-analysis.md) | ✅ MVP（player+weapon+Replication，见案例 README） |

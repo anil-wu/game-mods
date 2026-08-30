@@ -6,4 +6,4 @@
 
 | 目录 | 参照 | 状态 |
 |---|---|---|
-| `MirrorUnityFPS/` | `replica_projects/MirrorUnityFPS` | 待启动（前置：ECS Replication，V2.0 §11.10） |
+| `MirrorUnityFPS/` | `replica_projects/MirrorUnityFPS` | ✅ MVP（player + weapon + Replication） |

@@ -1,0 +1,18 @@
+{
+  "id": "com.fps.player",
+  "version": "0.1.0",
+  "entry": "Com.Fps.Player.PlayerMod",
+  "modules": {
+    "shared": "com.fps.player.dll"
+  },
+  "dependencies": [
+    { "id": "com.game.core", "version": ">=1.0.0" },
+    { "id": "com.game.network", "version": ">=1.0.0" }
+  ],
+  "network": {
+    "protocols": [
+      { "id": "input", "version": 1, "direction": "ClientToServer" },
+      { "id": "local", "version": 1, "direction": "ServerToClient" }
+    ]
+  }
+}
