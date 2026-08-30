@@ -4,35 +4,30 @@ using Game.Mod.Runtime;
 
 namespace Com.Fps.Player
 {
-    /// <summary>位置快照 DTO（§12.9 规则 1：返回快照，不返回内部引用）。</summary>
-    public readonly struct PositionDto
+    /// <summary>
+    /// 能力 ABI 形状（Rule 19 进程内务实形态）：跨 Mod 参数/返回只用 BCL 纯数据——
+    /// 基元 + object[] 元组（字段布局即契约，见 CONTRACT.md），双方各自按文档解析，
+    /// 零自定义类型共享；跨信任边界时同一布局走字节流（§14.11）。
+    /// </summary>
+    public static class CapabilityShapes
     {
-        public readonly uint EntityId;
-        public readonly float X, Y, Z;
-        public readonly float Yaw;
-        public readonly bool Alive;
+        /// <summary>PositionDto 行：[0]=EntityId(u32) [1]=X(f32) [2]=Y(f32) [3]=Z(f32) [4]=Yaw(f32) [5]=Alive(bool)。</summary>
+        public static object[] PositionRow(uint entityId, float x, float y, float z, float yaw, bool alive) =>
+            new object[] { entityId, x, y, z, yaw, alive };
 
-        public PositionDto(uint entityId, float x, float y, float z, float yaw, bool alive)
+        /// <summary>DamageArgs：[0]=Target(u32) [1]=Amount(i32) [2]=Source(u32)。</summary>
+        public static bool TryReadDamage(object? args, out uint target, out int amount, out uint source)
         {
-            EntityId = entityId; X = x; Y = y; Z = z; Yaw = yaw; Alive = alive;
+            target = 0; amount = 0; source = 0;
+            if (args is not object[] a || a.Length < 3) return false;
+            if (a[0] is not uint t || a[1] is not int amt || a[2] is not uint s) return false;
+            target = t; amount = amt; source = s;
+            return true;
         }
     }
 
-    /// <summary>伤害参数（纯数据，可二进制序列化，§14.4）。</summary>
-    public readonly struct DamageArgs
-    {
-        public readonly uint Target;
-        public readonly int Amount;
-        public readonly uint Source;
-
-        public DamageArgs(uint target, int amount, uint source)
-        {
-            Target = target; Amount = amount; Source = source;
-        }
-    }
-
-    public delegate PositionDto GetPositionHandler(object? args);
-    public delegate PositionDto[] GetAllPositionsHandler(object? args);
+    public delegate object? GetPositionHandler(object? args);
+    public delegate object[] GetAllPositionsHandler(object? args);
     public delegate bool ApplyDamageHandler(object? args);
 
     /// <summary>
@@ -143,37 +138,38 @@ namespace Com.Fps.Player
 
         // ---- 能力实现 ----
 
-        private static PositionDto GetPosition(object? args)
+        private static object? GetPosition(object? args)
         {
             var entityId = args is uint id ? id : LocalPlayerEntityId;
             var e = new Entity(entityId);
-            if (!World.TryGet<Position3>(e, out var pos)) return default;
+            if (!World.TryGet<Position3>(e, out var pos)) return null;
             var yaw = World.TryGet<PlayerInput>(e, out var input) ? input.Yaw : 0f;
             var alive = World.TryGet<Health>(e, out var hp) && hp.Current > 0;
-            return new PositionDto(entityId, pos.X, pos.Y, pos.Z, yaw, alive);
+            return CapabilityShapes.PositionRow(entityId, pos.X, pos.Y, pos.Z, yaw, alive);
         }
 
-        private static PositionDto[] GetAllPositions()
+        private static object[] GetAllPositions()
         {
-            var list = new System.Collections.Generic.List<PositionDto>();
+            var list = new System.Collections.Generic.List<object[]>();
             foreach (var (entityId, pos) in World.Store<Position3>().All())
             {
                 var e = new Entity(entityId);
                 if (World.Has<ReplicaTag>(e)) continue; // 服务端权威视角：排除客户端副本（§11.10）
                 var yaw = World.TryGet<PlayerInput>(e, out var input) ? input.Yaw : 0f;
                 var alive = World.TryGet<Health>(e, out var hp) && hp.Current > 0;
-                list.Add(new PositionDto(entityId, pos.X, pos.Y, pos.Z, yaw, alive));
+                list.Add(CapabilityShapes.PositionRow(entityId, pos.X, pos.Y, pos.Z, yaw, alive));
             }
             return list.ToArray();
         }
 
         private static bool ApplyDamage(object? args)
         {
-            if (args is not DamageArgs dmg) return false;
-            var e = new Entity(dmg.Target);
+            if (!CapabilityShapes.TryReadDamage(args, out var target, out var amount, out var source))
+                return false;
+            var e = new Entity(target);
             if (!World.TryGet<Health>(e, out var hp) || hp.Current <= 0) return false;
 
-            hp.Current = System.Math.Max(0, hp.Current - dmg.Amount);
+            hp.Current = System.Math.Max(0, hp.Current - amount);
             World.Add(e, hp);
 
             if (hp.Current > 0) return false;
@@ -181,8 +177,8 @@ namespace Com.Fps.Player
             // 死亡：发布事件（谁定义谁发布，Rule 11）+ 挂重生计时
             World.Add(e, new RespawnTimer { T = PlayerConfig.RespawnDelay });
             var writer = Context.Messages.CreateWriter();
-            writer.WriteUInt32(1, dmg.Target);
-            writer.WriteUInt32(2, dmg.Source);
+            writer.WriteUInt32(1, target);
+            writer.WriteUInt32(2, source);
             var buffer = writer.ToBuffer();
             Context.Messages.Publish(DiedEvent, 1, in buffer);
             return true;

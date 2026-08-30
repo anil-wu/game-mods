@@ -74,17 +74,8 @@ def build_mod(mod, mods):
         for p in FRAMEWORK
     )
 
-    deprefs = ""
-    for dep in mod["deps"]:
-        if dep in mods:
-            depdll = os.path.join(TARGET, dep, mods[dep]["entry"])
-            deprefs += (
-                f'    <Reference Include="{dep}">\n'
-                f'      <HintPath>{depdll}</HintPath>\n'
-                f'      <Private>false</Private>\n'
-                f'    </Reference>\n'
-            )
-
+    # V2 Rule 12：业务 Mod 之间零程序集引用——不再链接依赖 Mod 的 DLL。
+    # 跨 Mod 交互只走四条 Core 中介通道（ModCall / Message / UI / Resource），契约 = 文档（Rule 19）。
     unityrefs = "\n".join(
         f'    <Reference Include="{m}">\n'
         f'      <HintPath>{os.path.join(UNITYENGINE, m + ".dll")}</HintPath>\n'
@@ -103,7 +94,6 @@ def build_mod(mod, mods):
   </PropertyGroup>
   <ItemGroup>
 {projrefs}
-{deprefs}
 {unityrefs}
     <Compile Include="{os.path.join(mod["dir"], "src", "**", "*.cs")}" />
   </ItemGroup>
