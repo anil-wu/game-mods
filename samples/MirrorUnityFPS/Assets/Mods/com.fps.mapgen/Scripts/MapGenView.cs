@@ -42,17 +42,22 @@ namespace Com.Fps.MapGen
 
             // 3) 棕箱掩体
             BuildBoxes();
+
+            // 4) 假软阴影（暗蓝扁平块，物体下方）
+            BuildFakeShadows();
         }
 
         private void BuildFrontWall()
         {
-            // 前墙：10 宽 × 9 高 × 0.5 厚，中心 x=0, z=10；门洞 3×3（左下，通透 + 深色门框）；顶部中央缺口 2×1.5
+            // 前墙：10 宽 × 9 高 × 0.5 厚，中心 x=0, z=10；门洞 3×3（左下，通透）；顶部中央缺口 2×1.5
             const float z = 10f;
             Cube("FrontL", new Vector3(-3.25f, 1.5f, z), new Vector3(3.5f, 3f, 0.5f), WallGray);
             Cube("FrontR", new Vector3(3.25f, 1.5f, z), new Vector3(3.5f, 3f, 0.5f), WallGray);
-            Cube("TopL", new Vector3(-3f, 6f, z), new Vector3(4f, 6f, 0.5f), WallGray);
-            Cube("TopR", new Vector3(3f, 6f, z), new Vector3(4f, 6f, 0.5f), WallGray);
-            Cube("Lintel", new Vector3(0f, 5.25f, z), new Vector3(2f, 4.5f, 0.5f), WallGray);
+            // 门洞上方整墙（y=3~7.5，覆盖门洞宽度）
+            Cube("Lintel", new Vector3(0f, 5.25f, z), new Vector3(10f, 4.5f, 0.5f), WallGray);
+            // 顶部缺口两侧（y=7.5~9，中间留 2 宽缺口）
+            Cube("TopL", new Vector3(-3f, 8.25f, z), new Vector3(4f, 1.5f, 0.5f), WallGray);
+            Cube("TopR", new Vector3(3f, 8.25f, z), new Vector3(4f, 1.5f, 0.5f), WallGray);
             // 门洞深色门框（上沿 + 两侧竖条），门洞本身 3×3 间隙即通透过道
             Cube("DoorTop", new Vector3(0f, 3.15f, z - 0.1f), new Vector3(3.2f, 0.25f, 0.7f), WallGrayDark);
             Cube("DoorL", new Vector3(-1.62f, 1.5f, z - 0.1f), new Vector3(0.25f, 3f, 0.7f), WallGrayDark);
@@ -61,18 +66,18 @@ namespace Com.Fps.MapGen
 
         private void BuildBackWing()
         {
-            // 后翼墙：与前墙垂直成 L（沿 z 向后延伸，连接在前墙右端），更高（10 格，全场最高）
-            Cube("BackWing", new Vector3(4.8f, 5f, 15f), new Vector3(0.8f, 10f, 10f), WallGray);
+            // 后翼墙：与前墙垂直成 L（沿 z 向后延伸，宽实体 5 格），更高（10 格，全场最高）
+            Cube("BackWing", new Vector3(4.5f, 5f, 15f), new Vector3(5f, 10f, 10f), WallGray);
         }
 
         private void BuildStairs()
         {
-            // 外挂大台阶：10 级，沿后翼墙侧面（x=5.2 边）从地面爬升至墙顶（y=10），每级踏步 0.9 宽×1 高，交替深灰做阴影缝
+            // 外挂大台阶：10 级，沿后翼墙右侧面从地面爬升至墙顶，每级踏步 1 宽×1 高，交替深灰做阴影缝
             const int steps = 10;
             for (var i = 0; i < steps; i++)
             {
                 var h = i + 1;
-                Cube("Step" + i, new Vector3(5.2f, h - 0.5f, 11f + i * 0.9f), new Vector3(0.9f, 1f, 0.9f), i % 2 == 0 ? WallGray : WallGrayDark);
+                Cube("Step" + i, new Vector3(7.1f, h - 0.5f, 11f + i * 1f), new Vector3(1f, 1f, 1f), i % 2 == 0 ? WallGray : WallGrayDark);
             }
         }
 
@@ -80,15 +85,38 @@ namespace Com.Fps.MapGen
         {
             // 左远角 1 小箱（最远、最小，画面左边缘）
             Cube("BoxFar", new Vector3(-13f, 0.7f, 9f), new Vector3(1.4f, 1.4f, 1.4f), BoxBrown);
-            // 左中近景：横向掩体矮墙（高矮不一，非斜向堆叠）
+            // 左中近景：横向掩体矮墙（高矮不一）
             Cube("BoxL1", new Vector3(-6.5f, 1.4f, 2.5f), new Vector3(2.8f, 2.8f, 1.2f), BoxBrown);
             Cube("BoxL2", new Vector3(-3.6f, 0.8f, 2.5f), new Vector3(1.6f, 1.6f, 1.6f), BoxBrown);
             Cube("BoxL3", new Vector3(-6.5f, 0.8f, 4.6f), new Vector3(1.6f, 1.6f, 1.6f), BoxBrown);
             // 右侧前景 1 箱（台阶脚附近）
             Cube("BoxR", new Vector3(10f, 1f, 6f), new Vector3(2f, 2f, 2f), BoxBrown);
             // 建筑顶部 1 箱（后翼墙顶）
-            Cube("BoxTop", new Vector3(4.8f, 10.8f, 13f), new Vector3(1.6f, 1.6f, 1.6f), BoxBrown);
+            Cube("BoxTop", new Vector3(4.5f, 10.8f, 13f), new Vector3(1.6f, 1.6f, 1.6f), BoxBrown);
         }
+
+        private void BuildFakeShadows()
+        {
+            // 半透明暗蓝“软阴影”块（batchmode 真阴影不稳定，用扁平块模拟柔和投影）
+            ShadowBlob("ShBldg", new Vector3(1f, 0.02f, 12f), new Vector3(13f, 0.04f, 7f));
+            ShadowBlob("ShBoxL", new Vector3(-6.5f, 0.02f, 3f), new Vector3(4f, 0.04f, 2.5f));
+            ShadowBlob("ShBoxR", new Vector3(10f, 0.02f, 6f), new Vector3(2.5f, 0.04f, 2.5f));
+            ShadowBlob("ShFar", new Vector3(-13f, 0.02f, 9f), new Vector3(2f, 0.04f, 2f));
+        }
+
+        private void ShadowBlob(string name, Vector3 pos, Vector3 size)
+        {
+            var go = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            go.name = name;
+            go.transform.SetParent(transform, false);
+            go.transform.localPosition = pos;
+            go.transform.localScale = size;
+            go.GetComponent<Renderer>().sharedMaterial = _shadowMat;
+        }
+
+        private Material _shadowMat => _shadowMatCache ??= new Material(Shader.Find("Standard"))
+            { color = new Color(40f / 255f, 90f / 255f, 140f / 255f) };
+        private Material? _shadowMatCache;
 
         private void Cube(string name, Vector3 pos, Vector3 size, Color color)
         {
