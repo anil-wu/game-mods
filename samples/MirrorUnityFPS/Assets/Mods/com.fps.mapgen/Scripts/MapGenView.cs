@@ -1,149 +1,141 @@
 using System.Collections.Generic;
+using Game.Mod.Contract;
 using UnityEngine;
 
 namespace Com.Fps.MapGen
 {
     /// <summary>
-    /// 地图视图（blockout 关卡版）：按参考验收图 1.webp 复刻的 Unity 网格块体风格场景。
-    /// 蓝色地面 + 灰色 L 形主体建筑（前墙门洞+顶部缺口、后翼墙、外挂大台阶、白色斜坡板）+ 散落棕箱掩体。
-    /// 带程序化网格线材质；固定布局（确定性）。
+    /// 地图视图：复刻原 MirrorUnityFPS 的 Map Gen v2 程序化世界（seed=5）。
+    /// 4 块 base 平台（100×20，沿 Z 间隔 20），每块随机基地类型（city/forest/future）→
+    /// 各 spawn 5 栋建筑 + 5 棵树（真实预制体，自然尺寸，不缩放）。
+    /// 复刻样本的 Random.InitState(5) + RandomSpawn（含重叠检查）序列。
     /// </summary>
     public sealed class MapGenView : MonoBehaviour
     {
-        // 参考图 RGB（/255）
-        private static readonly Color FloorBlue = new(65f / 255f, 155f / 255f, 210f / 255f);
-        private static readonly Color WallGray = new(150f / 255f, 155f / 255f, 165f / 255f);
-        private static readonly Color WallGrayDark = new(108f / 255f, 112f / 255f, 120f / 255f);
-        private static readonly Color BoxBrown = new(130f / 255f, 95f / 255f, 45f / 255f);
-        private static readonly Color RampWhite = new(230f / 255f, 232f / 255f, 238f / 255f);
+        private const int Seed = 5;
+        private const int BaseCount = 4;
+        private const float BaseGap = 20f;
+        private const float BaseWidth = 100f;
+        private const float BaseHeight = 20f;
+        private const int BuildingCount = 5;
+        private const int TreeCount = 5;
+        private const float OverlapRange = 12f;
 
-        private readonly Dictionary<Color, Material> _matCache = new();
+        private static readonly string BasePath = "Content/World Generation/World Base/Base";
+
+        private static readonly string[][] BuildingPaths =
+        {
+            new[]
+            {
+                "Content/World Props/Building/City Building/Bulding A",
+                "Content/World Props/Building/City Building/Bulding B",
+                "Content/World Props/Building/City Building/Bulding C",
+            },
+            new[]
+            {
+                "Content/World Props/Building/Forest Building/Bulding A",
+                "Content/World Props/Building/Forest Building/Bulding B",
+                "Content/World Props/Building/Forest Building/Bulding C",
+            },
+            new[]
+            {
+                "Content/World Props/Building/Future Building/Bulding A",
+                "Content/World Props/Building/Future Building/Bulding B",
+                "Content/World Props/Building/Future Building/Bulding C",
+            },
+        };
+
+        private static readonly string[][] TreePaths =
+        {
+            new[]
+            {
+                "Content/World Props/Tree/City/Tree A",
+                "Content/World Props/Tree/City/Tree B",
+                "Content/World Props/Tree/City/Tree C",
+            },
+            new[]
+            {
+                "Content/World Props/Tree/Forest/Tree A",
+                "Content/World Props/Tree/Forest/Tree B",
+                "Content/World Props/Tree/Forest/Tree C",
+            },
+            new[]
+            {
+                "Content/World Props/Tree/Future/Tree A",
+                "Content/World Props/Tree/Future/Tree B",
+                "Content/World Props/Tree/Future/Tree C",
+            },
+        };
+
+        private bool _built;
 
         private void Update()
         {
             if (_built) return;
+            _built = true;
             Rebuild();
         }
 
-        private bool _built;
-
         private void Rebuild()
         {
-            _built = true;
+            Random.InitState(Seed); // 复刻样本 seed=5
+            var spawned = new List<Vector3>();
 
-            // 1) 蓝色地面
-            Cube("Floor", new Vector3(0f, -0.1f, 0f), new Vector3(40f, 0.2f, 40f), FloorBlue);
-
-            // 2) 灰色 L 形主体建筑
-            BuildFrontWall();
-            BuildBackWing();
-            BuildStairs();
-            Cube("Ramp", new Vector3(5.2f, 0.06f, 11.5f), new Vector3(2.6f, 0.12f, 2.6f), RampWhite); // 台阶脚白色斜坡板（放大）
-
-            // 3) 棕箱掩体
-            BuildBoxes();
-
-            // 4) 假软阴影（暗蓝扁平块，物体下方）
-            BuildFakeShadows();
-        }
-
-        private void BuildFrontWall()
-        {
-            // 前墙：10 宽 × 9 高 × 0.5 厚，中心 x=0, z=10；门洞 3×3（左下，通透）；顶部中央缺口 2×1.5
-            const float z = 10f;
-            Cube("FrontL", new Vector3(-3.25f, 1.5f, z), new Vector3(3.5f, 3f, 0.5f), WallGray);
-            Cube("FrontR", new Vector3(3.25f, 1.5f, z), new Vector3(3.5f, 3f, 0.5f), WallGray);
-            // 门洞上方整墙（y=3~7.5，覆盖门洞宽度）
-            Cube("Lintel", new Vector3(0f, 5.25f, z), new Vector3(10f, 4.5f, 0.5f), WallGray);
-            // 顶部缺口两侧（y=7.5~9，中间留 2 宽缺口）
-            Cube("TopL", new Vector3(-3f, 8.25f, z), new Vector3(4f, 1.5f, 0.5f), WallGray);
-            Cube("TopR", new Vector3(3f, 8.25f, z), new Vector3(4f, 1.5f, 0.5f), WallGray);
-            // 门洞深色门框（上沿 + 两侧竖条），门洞本身 3×3 间隙即通透过道
-            Cube("DoorTop", new Vector3(0f, 3.15f, z - 0.1f), new Vector3(3.2f, 0.25f, 0.7f), WallGrayDark);
-            Cube("DoorL", new Vector3(-1.62f, 1.5f, z - 0.1f), new Vector3(0.25f, 3f, 0.7f), WallGrayDark);
-            Cube("DoorR", new Vector3(1.62f, 1.5f, z - 0.1f), new Vector3(0.25f, 3f, 0.7f), WallGrayDark);
-        }
-
-        private void BuildBackWing()
-        {
-            // 后翼墙：与前墙垂直成 L（沿 z 向后延伸，宽实体 5 格），更高（10 格，全场最高）
-            Cube("BackWing", new Vector3(4.5f, 5f, 15f), new Vector3(5f, 10f, 10f), WallGray);
-        }
-
-        private void BuildStairs()
-        {
-            // 外挂大台阶：10 级，沿后翼墙右侧面从地面爬升至墙顶，每级踏步 1 宽×1 高，交替深灰做阴影缝
-            const int steps = 10;
-            for (var i = 0; i < steps; i++)
+            for (var b = 0; b < BaseCount; b++)
             {
-                var h = i + 1;
-                Cube("Step" + i, new Vector3(7.1f, h - 0.5f, 11f + i * 1f), new Vector3(1f, 1f, 1f), i % 2 == 0 ? WallGray : WallGrayDark);
+                var basePos = new Vector3(0f, 0f, b * BaseGap);
+                SpawnBasePlatform(basePos); // base 平台（蓝色地面，参考 (65,155,210)）
+
+                var type = Random.Range(0, 3); // city/forest/future
+                SpawnRandom(BuildingCount, BuildingPaths[type], basePos, spawned);
+                SpawnRandom(TreeCount, TreePaths[type], basePos, spawned);
             }
         }
 
-        private void BuildBoxes()
-        {
-            // 左远角 1 小箱（最远、最小，画面左边缘）
-            Cube("BoxFar", new Vector3(-13f, 0.7f, 9f), new Vector3(1.4f, 1.4f, 1.4f), BoxBrown);
-            // 左中近景：横向掩体矮墙（高矮不一）
-            Cube("BoxL1", new Vector3(-6.5f, 1.4f, 2.5f), new Vector3(2.8f, 2.8f, 1.2f), BoxBrown);
-            Cube("BoxL2", new Vector3(-3.6f, 0.8f, 2.5f), new Vector3(1.6f, 1.6f, 1.6f), BoxBrown);
-            Cube("BoxL3", new Vector3(-6.5f, 0.8f, 4.6f), new Vector3(1.6f, 1.6f, 1.6f), BoxBrown);
-            // 右侧前景 1 箱（台阶脚附近）
-            Cube("BoxR", new Vector3(10f, 1f, 6f), new Vector3(2f, 2f, 2f), BoxBrown);
-            // 建筑顶部 1 箱（后翼墙顶）
-            Cube("BoxTop", new Vector3(4.5f, 10.8f, 13f), new Vector3(1.6f, 1.6f, 1.6f), BoxBrown);
-        }
-
-        private void BuildFakeShadows()
-        {
-            // 半透明暗蓝“软阴影”块（batchmode 真阴影不稳定，用扁平块模拟柔和投影）
-            ShadowBlob("ShBldg", new Vector3(1f, 0.02f, 12f), new Vector3(13f, 0.04f, 7f));
-            ShadowBlob("ShBoxL", new Vector3(-6.5f, 0.02f, 3f), new Vector3(4f, 0.04f, 2.5f));
-            ShadowBlob("ShBoxR", new Vector3(10f, 0.02f, 6f), new Vector3(2.5f, 0.04f, 2.5f));
-            ShadowBlob("ShFar", new Vector3(-13f, 0.02f, 9f), new Vector3(2f, 0.04f, 2f));
-        }
-
-        private void ShadowBlob(string name, Vector3 pos, Vector3 size)
+        /// <summary>base 平台：蓝色平面（100×20），样本 basePrefab 材质缺失故用简单平台替代。</summary>
+        private void SpawnBasePlatform(Vector3 basePos)
         {
             var go = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            go.name = name;
+            go.name = "Base";
             go.transform.SetParent(transform, false);
-            go.transform.localPosition = pos;
-            go.transform.localScale = size;
-            go.GetComponent<Renderer>().sharedMaterial = _shadowMat;
+            go.transform.position = basePos + new Vector3(0f, -0.1f, 0f);
+            go.transform.localScale = new Vector3(BaseWidth, 0.2f, BaseHeight);
+            var mat = new Material(Shader.Find("Standard"))
+                { color = new Color(65f / 255f, 155f / 255f, 210f / 255f) };
+            go.GetComponent<Renderer>().sharedMaterial = mat;
         }
 
-        private Material _shadowMat => _shadowMatCache ??= new Material(Shader.Find("Standard"))
-            { color = new Color(40f / 255f, 90f / 255f, 140f / 255f) };
-        private Material? _shadowMatCache;
-
-        private void Cube(string name, Vector3 pos, Vector3 size, Color color)
+        /// <summary>复刻样本 RandomSpawn：posX/posZ → 重叠检查 → prefabIndex。</summary>
+        private void SpawnRandom(int count, string[] paths, Vector3 basePos, List<Vector3> spawned)
         {
-            var go = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            go.name = name;
-            go.transform.SetParent(transform, false);
-            go.transform.localPosition = pos;
-            go.transform.localScale = size;
-            go.GetComponent<Renderer>().sharedMaterial = GridMaterial(color);
+            for (var i = 0; i < count; i++)
+            {
+                var posX = BaseWidth / 2f * Random.Range(-1f, 1f);
+                var posZ = BaseHeight / 2f * Random.Range(-1f, 1f);
+                var pos = basePos + new Vector3(posX, 0f, posZ);
+
+                // 重叠检查（样本用 OverlapSphere 12m；简化距离判定）
+                var overlap = false;
+                foreach (var s in spawned)
+                    if (Vector3.Distance(s, pos) < OverlapRange) { overlap = true; break; }
+                if (overlap) continue;
+
+                var index = Random.Range(0, paths.Length);
+                Spawn(paths[index], pos, Quaternion.identity, spawned);
+            }
         }
 
-        /// <summary>程序化网格块体材质：Standard（受光/背光有体积）+ 白色网格纹理 + 颜色染色。</summary>
-        private Material GridMaterial(Color baseColor)
+        private void Spawn(string path, Vector3 pos, Quaternion rot, List<Vector3> spawned)
         {
-            if (_matCache.TryGetValue(baseColor, out var cached)) return cached;
-            const int size = 32, cell = 4;
-            var tex = new Texture2D(size, size, TextureFormat.RGBA32, false);
-            for (var y = 0; y < size; y++)
-                for (var x = 0; x < size; x++)
-                {
-                    var line = (x % cell == 0) || (y % cell == 0);
-                    tex.SetPixel(x, y, line ? new Color(0.5f, 0.5f, 0.5f, 1f) : Color.white);
-                }
-            tex.Apply();
-            var mat = new Material(Shader.Find("Standard")) { color = baseColor, mainTexture = tex };
-            _matCache[baseColor] = mat;
-            return mat;
+            try
+            {
+                var prefab = MapGenMod.Context?.Resources.Load(new AssetId(MapGenMod.ModIdValue, path)) as GameObject;
+                if (prefab is null) { Debug.LogWarning($"[MapGenView] 缺失预制体: {path}"); return; }
+                var go = Instantiate(prefab, pos, rot, transform);
+                go.name = prefab.name;
+                spawned.Add(pos);
+            }
+            catch (System.Exception) { }
         }
     }
 }

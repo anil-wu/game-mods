@@ -1,0 +1,33 @@
+{
+  "id": "com.fps.mapgen",
+  "version": "0.1.1",
+  "entry": "Com.Fps.MapGen.MapGenMod",
+  "modules": {
+    "shared": "com.fps.mapgen.dll"
+  },
+  "dependencies": [
+    {
+      "id": "com.game.core",
+      "version": ">=1.0.0"
+    },
+    {
+      "id": "com.game.network",
+      "version": ">=1.0.0"
+    }
+  ],
+  "network": {
+    "protocols": [
+      {
+        "id": "seed",
+        "version": 1,
+        "direction": "ServerToClient"
+      }
+    ]
+  },
+  "boot": false,
+  "assets": {
+    "bundles": [
+      "com.fps.mapgen.bundle"
+    ]
+  }
+}
