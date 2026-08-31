@@ -43,8 +43,8 @@ namespace Game.Runtime.Editor
             if (cam is null) { Debug.LogError("[Verify] Camera.main 为空"); EditorApplication.Exit(1); return; }
             cam.clearFlags = CameraClearFlags.SolidColor;
             cam.backgroundColor = new Color(0.59f, 0.78f, 0.92f); // 浅青蓝天空
-            cam.transform.position = new Vector3(45f, 45f, -25f);
-            cam.transform.LookAt(new Vector3(0f, 12f, 20f));
+            cam.transform.position = new Vector3(0f, 2.5f, -32f);
+            cam.transform.LookAt(new Vector3(0f, 5f, 0f));
             cam.fieldOfView = 55f;
 
             // 渐变天空：朝相机的大矩形面片 + 垂直渐变纹理（深海军蓝 → 浅青蓝）
@@ -88,8 +88,8 @@ namespace Game.Runtime.Editor
         {
             const int h = 256, w = 8;
             var tex = new Texture2D(w, h, TextureFormat.RGBA32, false);
-            var top = new Color(35f / 255f, 70f / 255f, 135f / 255f);   // 深海军蓝
-            var bot = new Color(150f / 255f, 200f / 255f, 235f / 255f); // 浅青蓝
+            var top = new Color(40f / 255f, 62f / 255f, 98f / 255f);    // 深蓝（天顶）
+            var bot = new Color(68f / 255f, 100f / 255f, 147f / 255f);   // 浅蓝（地平线）
             for (var y = 0; y < h; y++)
             {
                 // y=0 为纹理底部（地平线浅青蓝），y=h-1 为纹理顶部（深海军蓝）
