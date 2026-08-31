@@ -43,8 +43,8 @@ namespace Game.Runtime.Editor
             if (cam is null) { Debug.LogError("[Verify] Camera.main 为空"); EditorApplication.Exit(1); return; }
             cam.clearFlags = CameraClearFlags.SolidColor;
             cam.backgroundColor = new Color(0.59f, 0.78f, 0.92f); // 浅青蓝天空
-            cam.transform.position = new Vector3(10f, 17f, -14f);
-            cam.transform.LookAt(new Vector3(3f, 5f, 11f));
+            cam.transform.position = new Vector3(6f, 18f, -8f);
+            cam.transform.LookAt(new Vector3(2f, 5f, 11f));
             cam.fieldOfView = 50f;
 
             // 渐变天空：朝相机的大矩形面片 + 垂直渐变纹理（深海军蓝 → 浅青蓝）
