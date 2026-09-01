@@ -23,6 +23,7 @@
     <Compile Include="../../mods/com.game.modstore/src/**/*.cs" Exclude="../../mods/com.game.modstore/src/ModStoreView.cs" />
     <Compile Include="../../mods/com.sample.pushbox/src/**/*.cs" Exclude="../../mods/com.sample.pushbox/src/PushBoxView.cs" />
     <Compile Include="../../samples/MirrorUnityFPS/Assets/Mods/com.fps.player/Scripts/**/*.cs" Exclude="../../samples/MirrorUnityFPS/Assets/Mods/com.fps.player/Scripts/PlayerView.cs" />
+    <Compile Include="../../samples/Zombtoy/Assets/Mods/com.zombtoy.enemy/Scripts/**/*.cs" Exclude="../../samples/Zombtoy/Assets/Mods/com.zombtoy.enemy/Scripts/EnemyView.cs" />
     <Compile Include="../../samples/Zombtoy/Assets/Mods/com.zombtoy.player/Scripts/**/*.cs" Exclude="../../samples/Zombtoy/Assets/Mods/com.zombtoy.player/Scripts/PlayerView.cs" />
     <Compile Include="../../samples/MirrorUnityFPS/Assets/Mods/com.fps.weapon/Scripts/**/*.cs" Exclude="../../samples/MirrorUnityFPS/Assets/Mods/com.fps.weapon/Scripts/WeaponView.cs" />
     <Compile Include="../../samples/MirrorUnityFPS/Assets/Mods/com.fps.inventory/Scripts/**/*.cs" Exclude="../../samples/MirrorUnityFPS/Assets/Mods/com.fps.inventory/Scripts/InventoryView.cs" />
