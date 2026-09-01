@@ -57,3 +57,6 @@ mods/**/ProjectSettings/*.asset
 
 # pi 任务编排器运行状态（任务/run/会话文件，不入库）
 .harness/
+
+# QA 截图（生成物）
+runtime/Unity/game_screenshot.png
