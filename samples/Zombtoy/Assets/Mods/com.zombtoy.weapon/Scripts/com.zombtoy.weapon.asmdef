@@ -1,18 +1,3 @@
 {
-  "name": "com.zombtoy.weapon",
-  "references": [],
-  "includePlatforms": [],
-  "excludePlatforms": [],
-  "allowUnsafeCode": false,
-  "overrideReferences": true,
-  "precompiledReferences": [
-    "Game.Mod.Contract",
-    "Game.ECS",
-    "Game.Messaging",
-    "Game.Mod.Runtime"
-  ],
-  "autoReferenced": true,
-  "defineConstraints": [],
-  "versionDefines": [],
-  "noEngineReferences": false
+  "name": "com.zombtoy.weapon"
 }

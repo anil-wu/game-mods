@@ -1,4 +1,5 @@
 using Game.ECS;
+using Game.Mod.Runtime;
 using UnityEngine;
 using UnityEngine.AI;
 
@@ -12,10 +13,13 @@ namespace Com.Zombtoy.Enemy
     /// - 死亡：读 EnemyFlags.IsSinking → 下沉动画（sinkSpeed，原版 EnemyHealth 表现）；实体销毁 → 视图自毁
     /// - 受击/死亡粒子、头顶血条由 prefab 挂载（资源迁移时按 prefab 校准）
     /// </summary>
-    public sealed class EnemyView : MonoBehaviour
+    public sealed class EnemyView : MonoBehaviour, IEntityView
     {
         /// <summary>视图绑定的敌人实体（宿主 EnemySpawnerView 实例化时写入，契约 §8）。</summary>
         public uint EntityId;
+
+        /// <summary>框架视图映射接口（Rule 12：WeaponView 等跨 Mod 视图经此读取实体 id，零类型引用）。</summary>
+        uint IEntityView.EntityId => EntityId;
 
         /// <summary>下沉速度（对齐原版 EnemyHealth.sinkSpeed=2.5）。</summary>
         public float SinkSpeed = EnemyConfig.SinkSpeed;

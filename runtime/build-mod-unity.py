@@ -13,13 +13,16 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 UNITY = os.environ.get("UNITY_PATH", "D:/Programs/Unity/2022.3.62f3/Editor/Unity.exe")
 FRAMEWORK = ["Game.Mod.Contract", "Game.ECS", "Game.Messaging", "Game.Mod.Runtime"]
 DIST_MODS = os.path.join(ROOT, "dist", "mods")
 
-SAMPLE = os.path.join(ROOT, "samples", "MirrorUnityFPS")
+# 默认 FPS；支持 `python build-mod-unity.py Zombtoy` / `MirrorUnityFPS` 指定案例
+CASE = sys.argv[1] if len(sys.argv) > 1 else "MirrorUnityFPS"
+SAMPLE = os.path.join(ROOT, "samples", CASE)
 
 
 def ensure_asmdefs():

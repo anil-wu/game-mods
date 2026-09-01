@@ -1,20 +1,3 @@
 {
-  "name": "com.zombtoy.ui",
-  "references": [
-    "UnityEngine.UI"
-  ],
-  "includePlatforms": [],
-  "excludePlatforms": [],
-  "allowUnsafeCode": false,
-  "overrideReferences": true,
-  "precompiledReferences": [
-    "Game.Mod.Contract",
-    "Game.ECS",
-    "Game.Messaging",
-    "Game.Mod.Runtime"
-  ],
-  "autoReferenced": true,
-  "defineConstraints": [],
-  "versionDefines": [],
-  "noEngineReferences": false
+  "name": "com.zombtoy.ui"
 }
