@@ -6,7 +6,9 @@ namespace Com.Zombtoy.Player
     /// <summary>
     /// 玩家视图（MonoBehaviour 表现层，不参与无头测试，CONTRACT.md §8）：
     /// - 输入：WASD+Shift → 写 PlayerInput（MoveX/MoveZ/Sprint）；鼠标射线打 Floor 层 → 写 Facing.Yaw（转身）
-    /// - 表现：每帧读逻辑权威 Position3/Facing 同步 Transform（有 Rigidbody 则 MovePosition 平滑，契约 §1）
+    /// - 视觉自建（任务：视图自建视觉，不依赖 prefab）：Awake 里建玩家胶囊（PrimitiveType.Capsule + Standard 材质）
+    ///   + Rigidbody（无重力/受控：MovePosition 平滑驱动，物理不扰动逻辑权威）
+    /// - 表现：每帧读逻辑权威 Position3/Facing 同步 Transform（Rigidbody.MovePosition，契约 §1）
     /// - 相机：Camera.main 等距跟随（对齐原版 CameraFollow 行为；逻辑为本视图自写，不搬原版代码）
     /// 实体↔视图映射（summary §0.6）：视图持有 public uint EntityId，单机 Host 下绑定 PlayerMod.LocalPlayerEntityId。
     /// 逻辑权威在 ECS（系统/能力内），视图只写"请求"（PlayerInput/Facing）与读"状态"（Position3/Facing）。
@@ -32,6 +34,7 @@ namespace Com.Zombtoy.Player
             if (EntityId == 0 && PlayerMod.LocalPlayerEntityId != 0)
                 EntityId = PlayerMod.LocalPlayerEntityId;
 
+            BuildVisuals(); // 宿主只建空 GameObject → 视图自建胶囊 + Rigidbody（不依赖 prefab）
             _rigidbody = GetComponent<Rigidbody>();
             _hasRigidbody = _rigidbody != null;
             _camera = Camera.main;
@@ -54,6 +57,33 @@ namespace Com.Zombtoy.Player
             DriveInput(world, entity);    // WASD+Shift + 鼠标转身 → 写请求组件（系统内合成逻辑速度，§0.6）
             SyncTransform(world, entity); // 逻辑权威 Position3/Facing → Transform
             DriveCamera(world, entity);   // Camera.main 等距跟随
+        }
+
+        /// <summary>自建视觉组件（幂等：已有渲染体/物理体时跳过——prefab 实例路径兼容）。</summary>
+        private void BuildVisuals()
+        {
+            // 玩家胶囊：PrimitiveType.Capsule + Standard 材质（青蓝，与蓝灰地板/敌人多色区分）
+            // 注意：GetComponentInChildren 可能返回 fake-null（is null 不识别），用 Unity == null 判断
+            if (GetComponentInChildren<Renderer>() == null)
+            {
+                var body = GameObject.CreatePrimitive(PrimitiveType.Capsule);
+                body.name = "PlayerBody";
+                body.transform.SetParent(transform, false);
+                body.transform.localScale = new Vector3(1f, 2f, 1f); // 2 单位高，中心对齐根（Position3.Y=1 = 胶囊中心）
+                body.GetComponent<Renderer>().material = StandardMaterial(new Color(0.2f, 0.75f, 0.8f));
+            }
+
+            // Rigidbody：无重力/受控（isKinematic=false + MovePosition 平滑；FreezeRotation 防倾倒）
+            var existing = GetComponent<Rigidbody>();
+            if (existing == null)
+            {
+                var rb = gameObject.AddComponent<Rigidbody>();
+                rb.useGravity = false;
+                rb.isKinematic = false; // 非运动学：MovePosition 走物理（贴墙受阻，视觉更合理）
+                rb.constraints = RigidbodyConstraints.FreezeRotation;
+                rb.collisionDetectionMode = CollisionDetectionMode.ContinuousSpeculative;
+                rb.interpolation = RigidbodyInterpolation.Interpolate;
+            }
         }
 
         // ---- 输入：WASD+Shift → PlayerInput；鼠标射线打 Floor → Facing ----
@@ -102,6 +132,14 @@ namespace Com.Zombtoy.Player
             var playerPos = new Vector3(pos.X, pos.Y, pos.Z);
             _camera.transform.position = playerPos + CameraOffset;
             _camera.transform.LookAt(playerPos);
+        }
+
+        private static Material StandardMaterial(Color color)
+        {
+            var shader = Shader.Find("Standard");
+            var mat = shader != null ? new Material(shader) : new Material(Shader.Find("Diffuse"));
+            mat.color = color;
+            return mat;
         }
     }
 }

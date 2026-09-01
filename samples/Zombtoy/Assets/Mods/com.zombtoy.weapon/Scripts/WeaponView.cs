@@ -38,11 +38,50 @@ namespace Com.Zombtoy.Weapon
         private void Awake()
         {
             _shootableMask = LayerMask.GetMask("Shootable");
+            if (_shootableMask == 0) _shootableMask = ~0; // 工程未配置 Shootable 层（防御）：命中任意层
             _camera = GetComponentInChildren<Camera>() ?? Camera.main;
             _gunParticles = GetComponent<ParticleSystem>();
+            // 注意：GetComponent 对内置组件可能返回 fake-null（is null/?? 不识别），必须用 Unity == null 判断
             _gunLine = GetComponent<LineRenderer>();
+            if (_gunLine == null) _gunLine = gameObject.AddComponent<LineRenderer>(); // 自建弹道线（不依赖 prefab）
+            ConfigureLine();
             _gunLight = GetComponent<Light>();
+            if (_gunLight == null) _gunLight = gameObject.AddComponent<Light>();       // 自建枪口光（不依赖 prefab）
+            ConfigureLight();
             _gunAudio = GetComponent<AudioSource>();
+        }
+
+        /// <summary>弹道线配置（LineRenderer：2 点折线 + 黄色细线，原版 PlayerShooting 表现形态）。</summary>
+        private void ConfigureLine()
+        {
+            if (_gunLine == null) return;
+            _gunLine.positionCount = 2;
+            _gunLine.startWidth = 0.03f;
+            _gunLine.endWidth = 0.03f;
+            _gunLine.startColor = new Color(1f, 0.95f, 0.4f);
+            _gunLine.endColor = new Color(1f, 0.7f, 0.2f);
+            _gunLine.numCapVertices = 4;
+            _gunLine.material = StandardMaterial(new Color(1f, 0.9f, 0.4f));
+            _gunLine.enabled = false;
+        }
+
+        /// <summary>枪口光配置（Point 点光，橙色枪口闪光，开火时短暂点亮）。</summary>
+        private void ConfigureLight()
+        {
+            if (_gunLight == null) return;
+            _gunLight.type = LightType.Point;
+            _gunLight.range = 8f;
+            _gunLight.intensity = 1.6f;
+            _gunLight.color = new Color(1f, 0.75f, 0.35f);
+            _gunLight.enabled = false;
+        }
+
+        private static Material StandardMaterial(Color color)
+        {
+            var shader = Shader.Find("Standard");
+            var mat = shader != null ? new Material(shader) : new Material(Shader.Find("Diffuse"));
+            mat.color = color;
+            return mat;
         }
 
         private void Start()
@@ -153,7 +192,11 @@ namespace Com.Zombtoy.Weapon
                 _gunLine.SetPosition(1, hitPoint);
             }
             if (_gunParticles is not null) { _gunParticles.Stop(); _gunParticles.Play(); }
-            if (_gunLight is not null) _gunLight.enabled = true;
+            if (_gunLight is not null)
+            {
+                _gunLight.transform.position = origin; // 枪口位置（玩家前方射线原点）
+                _gunLight.enabled = true;
+            }
             if (_gunAudio is not null) _gunAudio.Play();
         }
 

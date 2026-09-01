@@ -10,6 +10,7 @@ namespace Game.Runtime.Editor
     {
         private const string ArmedKey = "Game.Runtime.PlayScreenshot.Armed";
         private static int _frames;
+        private static float _elapsed;
 
         static PlayScreenshot()
         {
@@ -21,6 +22,7 @@ namespace Game.Runtime.Editor
         {
             SessionState.SetBool(ArmedKey, true);
             _frames = 0;
+            _elapsed = 0f;
             EditorApplication.EnterPlaymode();
         }
 
@@ -30,12 +32,17 @@ namespace Game.Runtime.Editor
         {
             if (state != PlayModeStateChange.EnteredPlayMode || !Armed) return;
             _frames = 0;
+            _elapsed = 0f;
         }
 
         private static void OnUpdate()
         {
             if (!Armed) return;
-            if (++_frames < 40) return;
+            _frames++;
+            _elapsed += UnityEngine.Time.deltaTime;
+            // 等开局 + 首批敌人生成（MenuView 批处理自动开局 → 3s 首批刷敌 → 再等一波生成）：
+            // 注意 batchmode 帧率可达万级（dt≈0.0001），帧数无意义——按累计游戏时间等足 10s（上限 15w 帧防卡死）。
+            if (_frames < 40 || (_elapsed < 10f && _frames < 150000)) return;
             SessionState.SetBool(ArmedKey, false);
 
             var cam = Camera.main;
