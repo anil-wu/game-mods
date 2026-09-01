@@ -18,8 +18,8 @@ namespace Com.Zombtoy.Weapon
     /// </summary>
     public sealed class WeaponView : MonoBehaviour
     {
-        /// <summary>Shootable 层（命中判定，原版 LayerMask.GetMask("Shootable")）。</summary>
-        private static int ShootableMask { get; } = LayerMask.GetMask("Shootable");
+        /// <summary>Shootable 层（命中判定，原版 LayerMask.GetMask("Shootable")）。在 Awake 计算（Unity 禁止字段初始化调 NameToLayer）。</summary>
+        private int _shootableMask;
 
         private Camera? _camera;
         private ParticleSystem? _gunParticles;
@@ -37,6 +37,7 @@ namespace Com.Zombtoy.Weapon
 
         private void Awake()
         {
+            _shootableMask = LayerMask.GetMask("Shootable");
             _camera = GetComponentInChildren<Camera>() ?? Camera.main;
             _gunParticles = GetComponent<ParticleSystem>();
             _gunLine = GetComponent<LineRenderer>();
@@ -121,7 +122,7 @@ namespace Com.Zombtoy.Weapon
             uint hitEntity = 0;
             var hitPoint = origin + dir * def.Range;
             var isHit = false;
-            if (Physics.Raycast(origin, dir, out var hit, def.Range, ShootableMask))
+            if (Physics.Raycast(origin, dir, out var hit, def.Range, _shootableMask))
             {
                 hitPoint = hit.point;
                 isHit = true;
