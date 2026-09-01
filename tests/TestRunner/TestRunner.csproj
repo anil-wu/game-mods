@@ -29,6 +29,7 @@
     <Compile Include="../../samples/Zombtoy/Assets/Mods/com.zombtoy.item/Scripts/**/*.cs" Exclude="../../samples/Zombtoy/Assets/Mods/com.zombtoy.item/Scripts/ItemView.cs" />
     <Compile Include="../../samples/Zombtoy/Assets/Mods/com.zombtoy.leaderboard/Scripts/**/*.cs" />
     <Compile Include="../../samples/Zombtoy/Assets/Mods/com.zombtoy.score/Scripts/**/*.cs" />
+    <Compile Include="../../samples/Zombtoy/Assets/Mods/com.zombtoy.game/Scripts/**/*.cs" Exclude="../../samples/Zombtoy/Assets/Mods/com.zombtoy.game/Scripts/GameView.cs" />
     <Compile Include="../../samples/MirrorUnityFPS/Assets/Mods/com.fps.weapon/Scripts/**/*.cs" Exclude="../../samples/MirrorUnityFPS/Assets/Mods/com.fps.weapon/Scripts/WeaponView.cs" />
     <Compile Include="../../samples/MirrorUnityFPS/Assets/Mods/com.fps.inventory/Scripts/**/*.cs" Exclude="../../samples/MirrorUnityFPS/Assets/Mods/com.fps.inventory/Scripts/InventoryView.cs" />
     <Compile Include="../../samples/MirrorUnityFPS/Assets/Mods/com.fps.mapgen/Scripts/**/*.cs" Exclude="../../samples/MirrorUnityFPS/Assets/Mods/com.fps.mapgen/Scripts/MapGenView.cs" />
