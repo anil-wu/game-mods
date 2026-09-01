@@ -1,0 +1,22 @@
+{
+  "id": "com.zombtoy.ui",
+  "version": "0.1.0",
+  "entry": "Com.Zombtoy.Ui.UiMod",
+  "modules": {
+    "shared": "com.zombtoy.ui.dll"
+  },
+  "dependencies": [
+    { "id": "com.game.core", "version": ">=1.0.0" },
+    { "id": "com.game.ui", "version": ">=1.0.0" },
+    { "id": "com.zombtoy.game", "version": ">=0.1.0" },
+    { "id": "com.zombtoy.player", "version": ">=0.1.0" },
+    { "id": "com.zombtoy.weapon", "version": ">=0.1.0" },
+    { "id": "com.zombtoy.enemy", "version": ">=0.1.0" },
+    { "id": "com.zombtoy.score", "version": ">=0.1.0" },
+    { "id": "com.zombtoy.leaderboard", "version": ">=0.1.0" }
+  ],
+  "boot": false,
+  "assets": {
+    "bundles": [ "com.zombtoy.ui.bundle" ]
+  }
+}

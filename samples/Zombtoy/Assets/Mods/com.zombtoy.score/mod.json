@@ -1,0 +1,15 @@
+{
+  "id": "com.zombtoy.score",
+  "version": "0.1.0",
+  "entry": "Com.Zombtoy.Score.ScoreMod",
+  "modules": {
+    "shared": "com.zombtoy.score.dll"
+  },
+  "dependencies": [
+    { "id": "com.game.core", "version": ">=1.0.0" },
+    { "id": "com.zombtoy.player", "version": ">=0.1.0" },
+    { "id": "com.zombtoy.enemy", "version": ">=0.1.0" },
+    { "id": "com.zombtoy.leaderboard", "version": ">=0.1.0" }
+  ],
+  "boot": false
+}

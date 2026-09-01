@@ -1,0 +1,15 @@
+{
+  "id": "com.zombtoy.player",
+  "version": "0.1.0",
+  "entry": "Com.Zombtoy.Player.PlayerMod",
+  "modules": {
+    "shared": "com.zombtoy.player.dll"
+  },
+  "dependencies": [
+    { "id": "com.game.core", "version": ">=1.0.0" }
+  ],
+  "boot": false,
+  "assets": {
+    "bundles": [ "com.zombtoy.player.bundle" ]
+  }
+}

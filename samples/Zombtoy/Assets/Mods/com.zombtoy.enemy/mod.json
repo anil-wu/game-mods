@@ -1,0 +1,16 @@
+{
+  "id": "com.zombtoy.enemy",
+  "version": "0.1.0",
+  "entry": "Com.Zombtoy.Enemy.EnemyMod",
+  "modules": {
+    "shared": "com.zombtoy.enemy.dll"
+  },
+  "dependencies": [
+    { "id": "com.game.core", "version": ">=1.0.0" },
+    { "id": "com.zombtoy.player", "version": ">=0.1.0" }
+  ],
+  "boot": false,
+  "assets": {
+    "bundles": [ "com.zombtoy.enemy.bundle" ]
+  }
+}
