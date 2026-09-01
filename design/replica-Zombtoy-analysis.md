@@ -90,7 +90,7 @@ Zombtoy 是单机游戏，**不需要 Replication 与 Network 组网**（FPS 复
 
 - 样例 Unity **2022.3.37f1**，复刻规范固定 **2022.3.62f3**——版本兼容，无 API 迁移问题（比 FPS 的 Unity 6 更省事）。
 - 样例有**未提交的阻塞 bug**（`Rocket.cs` 里 `using UnityEditor;` 破坏玩家构建、Titan 的 `groundTarget` 绑定错把整个地板当准星导致转向冻结）——复刻时**不搬运这些 bug**，机制等价即可。
-- 美术/音频用占位资源（框架无感），不复刻第三方的 WarFX/Cartoon FX/AllSkyFree。
+- **资源必须用原项目资源**（模型/动画/材质/纹理/音频），按 Mod 领域拆分打包（见 §4.1 资源映射），不造占位资源；代码重写，但资源搬用。
 
 ---
 
@@ -152,13 +152,32 @@ game ──► 全部（依赖聚合 + 引导）
 - **player/score → ui 更新**：Message（`HealthChanged`/`ScoreChanged`/`ZombieCountChanged`，ui 订阅）。
 - **score → leaderboard**：ModCall（提交/查询）。
 
+### 4.1 资源映射（原项目 → Mod）
+
+原项目资源按领域拆分进各 Mod 的 `Assets/Mods/<modId>/`，经 ModPacker 打包为 Bundle，运行时走 `context.Resources`（Rule 3）。机制重写、资源搬用：
+
+| 原项目资源（`replica_projects/Zombtoy/Assets/`） | 归属 Mod |
+|---|---|
+| 玩家角色模型（`Models/Characters`）、玩家 prefab、玩家动画 | com.zombtoy.player |
+| `Guns/`（机关枪/多发/霰弹）、`Rocket/RocketLauncher/IceBullet/Tornado` 等投射物 prefab、枪口特效（WarFX） | com.zombtoy.weapon |
+| 敌人 prefab（`Zombunny/ZomBear/Hellephant/Giant*/Titan/Clown/MiniClown/ZomDuck`）、敌人模型/动画、受击特效 | com.zombtoy.enemy |
+| `Ammo.prefab`、`HealthPotion 1.prefab` | com.zombtoy.item |
+| 无（纯逻辑） | com.zombtoy.score |
+| 无（HttpClient 纯逻辑） | com.zombtoy.leaderboard |
+| `Fonts/LuckiestGuy`、菜单/结算 UI、血条/体力条/准星 sprite | com.zombtoy.ui |
+| `Level1` 环境（地板/墙/障碍）、`AllSkyFree` 天空盒、`Sci-Fi Pack` 环境模型 | com.zombtoy.game（或独立 com.zombtoy.level） |
+| `Audio/`（SFX/音乐） | 按用途归属（枪声→weapon、敌人→enemy、背景音乐→ui） |
+
+> 第三方资源（WarFX/Cartoon FX/AllSkyFree/Sci-Fi Pack）同样按领域归属打包进各 Mod，不跨 Mod 共享（Rule 3/§8.4）。
+
 ---
 
 ## 5. 建议迭代顺序
 
-### 阶段 0（框架补缺，复用 FPS 成果）
+### 阶段 0（框架补缺 + 资源迁移，复用 FPS 成果）
 1. **UI.Mod ↔ UGUI 绑定**——窗口实例挂 Canvas 层级 + UGUI 组件绑定（唯一硬性前置）。
 2. **Unity 资源后端**——复用 FPS 的 ModPacker（Bundle）产物，接 `IResourceBackend` 的 Unity 实现。
+3. **原项目资源迁移 + 打包**——按 §4.1 映射，把 `replica_projects/Zombtoy/Assets/` 的资源复制进各 Mod 的 `Assets/Mods/<modId>/`，ModPacker 打包 Bundle + 上传 mod_server。
 
 ### 阶段 1（MVP：核心玩法闭环）
 `com.zombtoy.player` + `com.zombtoy.weapon` + `com.zombtoy.enemy`：

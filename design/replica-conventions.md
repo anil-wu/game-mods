@@ -64,7 +64,7 @@ samples/MirrorUnityFPS/
 
 1. **复刻 Mod 与 `mods/` 创作空间同构**：同样的 `mod.json + src/ + data/` 布局，同样的构建方式（构建脚本按目录扫描，见下）。
 2. **遵守 V2.0 全部规则**：IMod 仅 Register/Unregister、无泛型 ABI、通信全二进制、协议走 Network.Mod、窗口走 UI.Mod、契约=文档。
-3. **不使用原工程的代码与资源**：机制重新实现（原工程多为 NetworkBehaviour 单体，本来就放不下我们的 ABI）；美术用占位资源。
+3. **机制重新实现，资源必须用原项目资源**：代码重写（原工程多为 NetworkBehaviour 单体，本来就放不下我们的 ABI）；但**美术/模型/动画/材质/纹理/音频必须从原项目搬用**，按 Mod 领域拆分打包（走 ModPacker，规则见下方「资源归属硬规则」），不造占位资源。
 4. **验收**：`tests/run.sh` 全绿（含复刻案例的无头测试）+ `verify-unity.sh` 通过 + 案例 README 的对标清单逐项勾验。
 
 ## 构建集成
