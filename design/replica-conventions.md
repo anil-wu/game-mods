@@ -77,3 +77,4 @@ samples/MirrorUnityFPS/
 | 参照工程 | 复刻工程 | 分析 | 状态 |
 |---|---|---|---|
 | `replica_projects/MirrorUnityFPS` | `samples/MirrorUnityFPS` | [可行性分析](replica-MirrorUnityFPS-analysis.md) | ✅ MVP（player+weapon+Replication，见案例 README） |
+| `replica_projects/Zombtoy` | `samples/Zombtoy` | [可行性分析](replica-Zombtoy-analysis.md) | 📋 分析完成，待实施 |
