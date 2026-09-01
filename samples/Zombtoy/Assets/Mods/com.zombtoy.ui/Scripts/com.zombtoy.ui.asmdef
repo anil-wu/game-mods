@@ -1,6 +1,8 @@
 {
   "name": "com.zombtoy.ui",
-  "references": [],
+  "references": [
+    "UnityEngine.UI"
+  ],
   "includePlatforms": [],
   "excludePlatforms": [],
   "allowUnsafeCode": false,

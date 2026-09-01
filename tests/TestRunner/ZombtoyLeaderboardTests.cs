@@ -48,13 +48,16 @@ namespace TestRunner
                 f.Host.Messages.Subscribe(TestSubscriber, LeaderboardMod.TopChangedEvent,
                     (in MessageEnvelope _, PayloadReader reader) =>
                     {
-                        f.TopChangedEvents++;
+                        // 注意：handler 在线程池异步续体上执行，测试线程 SpinUntil 轮询 TopChangedEvents。
+                        // 必须先写数据字段、最后写计数（flag-last，x86 存储序保证计数可见时数据已可见），
+                        // 否则负载下测试线程可能看到 events=1 而 LastCount/LastRows 尚未写入（陈旧读竞态）。
                         if (reader.TryReadUInt32(1, out var c)) f.LastCount = c;
                         if (reader.TryReadView(2, out var view))
                         {
                             var decoded = DataCodec.Read(new PayloadReader(in view));
                             f.LastRows = decoded as object?[] ?? Array.Empty<object?[]>();
                         }
+                        f.TopChangedEvents++;
                     });
                 return f;
             }
