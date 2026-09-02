@@ -1,7 +1,9 @@
 using Game.ECS;
 using Game.Mod.Contract;
 using Game.Mod.Runtime;
+using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.AI;
 
 namespace Com.Zombtoy.Game
 {
@@ -72,7 +74,36 @@ namespace Com.Zombtoy.Game
             }
 
             _environment = BuildEnvironment();
+            BakeNavMesh(_environment); // 供敌人 NavMeshAgent 追击（FBX 地板不可读，用平面代理烘焙）
             FrameIsoCamera(); // 等距俯视兜底摆位（PlayerView 随后每帧接管 Camera.main 跟随）
+        }
+
+        /// <summary>给地板烘焙 NavMesh（敌人 NavMeshAgent 追击）。FBX 地板网格不可读 → 用不可见平面代理烘焙（Rule 3 不引入新资源）。</summary>
+        private static void BakeNavMesh(GameObject root)
+        {
+            var go = GameObject.CreatePrimitive(PrimitiveType.Plane);
+            go.name = "NavMeshFloorProxy";
+            go.transform.SetParent(root.transform, false);
+            go.transform.localScale = new Vector3(4.5f, 1f, 4.5f); // 45×45 平面（原 Level1 平台 ~47×47）
+            go.transform.localPosition = Vector3.zero;
+            var renderer = go.GetComponent<MeshRenderer>();
+            if (renderer != null) renderer.enabled = false;
+
+            var source = new NavMeshBuildSource
+            {
+                shape = NavMeshBuildSourceShape.Mesh,
+                sourceObject = go.GetComponent<MeshFilter>().sharedMesh,
+                transform = go.transform.localToWorldMatrix,
+                area = 0
+            };
+            var bounds = new Bounds(Vector3.zero, new Vector3(45f, 5f, 45f));
+            var data = NavMeshBuilder.BuildNavMeshData(NavMesh.GetSettingsByID(0),
+                new List<NavMeshBuildSource> { source }, bounds, Vector3.zero, Quaternion.identity);
+            if (data != null)
+            {
+                NavMesh.AddNavMeshData(data);
+                Debug.Log("[GameView] NavMesh 已烘焙（45×45 平面代理）");
+            }
         }
 
         /// <summary>
