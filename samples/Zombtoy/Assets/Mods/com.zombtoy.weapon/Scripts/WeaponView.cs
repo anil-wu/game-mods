@@ -43,8 +43,10 @@ namespace Com.Zombtoy.Weapon
             new(WeaponMod.ModIdValue, "Guns/MultiShot"),
         };
 
-        // 原枪口粒子材质 + 贴图（仅防御性回退：原枪 prefab 自带粒子材质确实断链/丢贴图时才按名重链，Rule 3。
-        // 注意：.meta GUID 会被 Unity 重导覆盖，AssetId 必须带扩展名 + mat.SetTexture 按名重链）
+        // 枪口粒子材质/贴图防御（原枪 prefab 自带粒子确实断链/丢贴图时才按名补链，Rule 3；
+        // 注意：.meta GUID 会被 Unity 重导覆盖，AssetId 必须带扩展名 + mat.SetTexture 按名补链）。
+        // 4 槽枪模枪口粒子 PSR 用的材质是 FlareParticleMaterial（原贴图 = Unity 内置白，非工程资产 → 补链专案）；
+        // MuzzleFlash 材质/贴图仅作「材质槽整槽断链（null）」时的按名回退（现有行为，原版资源，日志声明）。
         private static readonly AssetId MuzzleFlashMat = new(WeaponMod.ModIdValue,
             "Imported/EffectTexturesAndPrefabs/Materials/MuzzleFlash.mat");
         private static readonly AssetId MuzzleFlashTex = new(WeaponMod.ModIdValue,
@@ -83,39 +85,94 @@ namespace Com.Zombtoy.Weapon
             Debug.Log($"[WeaponView] 特效组件来自原枪 prefab slot={slot}: " +
                       $"ParticleSystem={_gunParticles != null} LineRenderer={_gunLine != null} " +
                       $"Light={_gunLight != null} AudioSource={_gunAudio != null}");
-            // 枪口粒子材质断链防御（仅原材质确实丢失时按名回退；完好则不干预）
-            RelinkMuzzleMaterialIfBroken();
+            // 枪口火花贴图验证 + 按名补链（含 inactive 粒子渲染体；原材质完好则不干预）
+            RelinkGunParticleTextures();
         }
 
         /// <summary>
-        /// 原枪 prefab 枪口粒子材质/贴图按名重链（复刻宪法允许的原版资源缺失回退，日志声明）。
-        /// 粒子渲染材质完好（mainTexture 非空）时不干预；缺失/断链时经 context.Resources.Load
-        /// 按名取原 MuzzleFlash 材质与贴图（AssetId 带扩展名精确命中，Rule 3）并 SetTexture 补链。
+        /// 枪口火花贴图验证 + 按名补链（原枪 prefab 实例粒子方块防御；复刻宪法允许的原版资源缺失回退，日志声明）。
+        /// 遍历 _heldWeapon 全部 ParticleSystemRenderer（GetComponentsInChildren(true) **含 inactive**——换枪隐藏/未激活的
+        /// 枪口粒子一并覆盖，参考 enemy 粒子补链先例）逐材质槽检查：
+        /// - 贴图完好（mainTexture 非空）不干预；
+        /// - 断链（mainTexture==null → 粒子渲染成方块）按材质 m_Name → 原贴图表补链（见
+        ///   RelinkMuzzleTextureByMaterialName：FlareParticleMaterial 为现 4 槽枪口粒子唯一材质，原贴图 = Unity
+        ///   内置白 → 以 Texture2D.whiteTexture 还原，即原版资源非自建近似物）；
+        /// - 材质槽整槽断链（null，资产缺失）→ 回退加载 MuzzleFlash.mat 整槽替换（现有行为，日志声明）。
+        /// 补链写共享材质实例：同材质多个渲染体/后续换枪一并恢复（幂等——已修/完好直接跳过）。
         /// </summary>
-        private void RelinkMuzzleMaterialIfBroken()
+        private void RelinkGunParticleTextures()
         {
-            if (_heldWeapon == null || _gunParticles == null) return;
-            var psr = _heldWeapon.GetComponentInChildren<ParticleSystemRenderer>();
-            if (psr == null) return;
-            var mat = psr.sharedMaterial;
-            if (mat != null && mat.mainTexture != null) return; // 原枪自带粒子材质/贴图完好
+            var ctx = WeaponMod.Context;
+            if (_heldWeapon == null || ctx == null) return; // 未注册/无枪实例（防御）
+            var renderers = _heldWeapon.GetComponentsInChildren<ParticleSystemRenderer>(true);
+            var relinked = 0;
+            Material? fallback = null;
+            foreach (var psr in renderers)
+            {
+                if (psr == null) continue; // fake-null（组件随旧枪实例销毁）
+                var mats = psr.sharedMaterials;
+                var touched = false;
+                for (var i = 0; i < mats.Length; i++)
+                {
+                    var mat = mats[i];
+                    if (mat == null) // 注意：Unity 对象必须用重载 == null 判（fake-null 不认 is null）
+                    {
+                        // 材质槽整槽断链（资产缺失 → 渲染方块）：按名回退 MuzzleFlash 材质整槽替换（原版资源）
+                        if (fallback == null) fallback = LoadMuzzleFallbackMaterial(ctx);
+                        if (fallback == null)
+                        {
+                            Debug.LogWarning("[WeaponView] 枪口粒子材质槽断链且按名回退失败 → 保持原样（该槽枪口粒子可能不显示）");
+                            continue;
+                        }
+                        mats[i] = fallback;
+                        touched = true;
+                        relinked++;
+                        Debug.LogWarning($"[WeaponView] 枪口粒子材质槽断链 → 按名回退 {MuzzleFlashMat.Path}（原版资源缺失回退，日志声明）");
+                        continue;
+                    }
+                    if (mat.mainTexture != null) continue; // 原枪粒子材质/贴图完好：不干预
+                    if (!RelinkMuzzleTextureByMaterialName(mat)) continue; // 非表内材质：保持原样
+                    relinked++;
+                }
+                if (touched) psr.sharedMaterials = mats; // 整槽替换需提交（SetTexture 已写共享材质实例）
+            }
+            if (relinked > 0)
+                Debug.LogWarning($"[WeaponView] 枪口火花贴图断链 → 按名补链 {relinked} 个枪口粒子渲染体材质槽（原版资源缺失回退，日志声明）");
+            else
+                Debug.Log($"[WeaponView] 枪口火花贴图验证：{renderers.Length} 个枪口粒子渲染体（含 inactive）材质/贴图完好，无需补链");
+        }
 
+        /// <summary>按材质名补链枪口粒子贴图（表：材质 m_Name → 原贴图，参考 enemy 粒子表先例）。
+        /// FlareParticleMaterial（Machine Gun / Shotgun 1 / MultiShot 枪口粒子唯一材质，原版工程 .mat 的 _MainTex
+        /// = Unity 内置白贴图，无工程纹理资产）→ whiteTexture 还原（即原贴图）；其余表内工程贴图（AssetId 带
+        /// 扩展名精确命中，Rule 3）按名加载补链。返回是否已补链。</summary>
+        private static bool RelinkMuzzleTextureByMaterialName(Material mat)
+        {
+            switch (mat.name)
+            {
+                case "FlareParticleMaterial":
+                    mat.SetTexture("_MainTex", Texture2D.whiteTexture);
+                    Debug.Log("[WeaponView] 枪口火花贴图已按名补链 FlareParticleMaterial → 内置白贴图（原版 .mat _MainTex，日志声明）");
+                    return true;
+                default:
+                    return false; // 非枪口粒子材质（本 Mod 未用项不进表，同 enemy 表原则）：不干预保持原样
+            }
+        }
+
+        /// <summary>材质槽断链时按名回退加载 MuzzleFlash 材质并补其原贴图（Rule 3；AssetId 带扩展名精确命中）。</summary>
+        private static Material? LoadMuzzleFallbackMaterial(IModContext ctx)
+        {
             Material? fallback = null;
             Texture? tex = null;
             try
             {
-                fallback = WeaponMod.Context?.Resources.Load(MuzzleFlashMat) as Material;
-                tex = WeaponMod.Context?.Resources.Load(MuzzleFlashTex) as Texture;
+                fallback = ctx.Resources.Load(MuzzleFlashMat) as Material;
+                tex = ctx.Resources.Load(MuzzleFlashTex) as Texture;
             }
             catch (System.Exception) { fallback = null; tex = null; }
-            if (fallback == null)
-            {
-                Debug.LogWarning("[WeaponView] 原枪粒子材质缺失且按名回退失败 → 保持原样（该槽枪口粒子可能不显示）");
-                return;
-            }
-            if (tex != null) { fallback.SetTexture("_MainTex", tex); Debug.Log("[WeaponView] 枪口粒子贴图已按名重链 " + MuzzleFlashTex); }
-            psr.sharedMaterial = fallback;
-            Debug.LogWarning($"[WeaponView] 原枪粒子材质断链 → 按名回退 {MuzzleFlashMat}（原版资源缺失回退，日志声明）");
+            if (fallback != null && tex != null)
+                fallback.SetTexture("_MainTex", tex); // 材质内 _MainTex GUID 断链时按名补链（幂等）
+            return fallback;
         }
 
         private void Start()

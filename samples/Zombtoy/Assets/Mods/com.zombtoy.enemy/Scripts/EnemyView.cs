@@ -24,6 +24,8 @@ namespace Com.Zombtoy.Enemy
     /// - 材质防御：prefab 自带模型材质/贴图链在包内完整时不动；断链/丢贴图时按名重链补（日志声明，Rule 3）。
     /// - 粒子贴图防御（生成/出现特效方块修复）：prefab 粒子材质贴图 GUID 因迁移拆分断链 → EnemySpawnerView
     ///   实例化后按材质名查表补 _MainTex（表见 ParticleTextureIdsByMaterial，16 组经原版工程核对），日志声明。
+    ///   扫描用 GetComponentsInChildren&lt;ParticleSystemRenderer&gt;(true) 含 inactive——覆盖 FxTemporaire 死亡特效
+    ///   （死亡时才激活的隐藏粒子）；StartDeath（死亡触发）再补链一次（幂等，防死亡粒子材质未在出生时被扫到）。
     /// </summary>
     public sealed class EnemyView : MonoBehaviour, IEntityView
     {
@@ -242,6 +244,8 @@ namespace Com.Zombtoy.Enemy
             if (_rb != null) _rb.isKinematic = true;     // 原版 StartSinking：运动学防物理干扰
             if (_capsule != null) _capsule.isTrigger = true; // 原版 Death：尸体转 Trigger 不挡路
             _sinking = true;
+            RelinkBrokenParticleTextures(); // 死亡触发时对死亡特效（FxTemporaire 死亡时才激活）粒子再次补链
+                                           // （幂等：出生时已修/材质完好的直接跳过，日志声明；覆盖死亡粒子方块）
             Debug.Log("[EnemyView] 敌人死亡：Dead 动画触发 + 停 NavMeshAgent + Rigidbody 运动学 + 下沉");
         }
 
@@ -300,6 +304,8 @@ namespace Com.Zombtoy.Enemy
         /// 粒子材质贴图完好（mainTexture 非空）时不干预；断链（mainTexture==null，渲染成方块）时按粒子材质
         /// m_Name 查 ParticleTextureIdsByMaterial 表，经本 Mod context.Resources.Load 取原贴图
         /// （AssetId 带扩展名精确命中，Rule 3）+ mat.SetTexture("_MainTex", tex) 补链（同 WeaponView 枪口先例）。
+        /// 扫描用 GetComponentsInChildren&lt;ParticleSystemRenderer&gt;(true)：**含 inactive 对象**——prefab 上默认隐藏的
+        /// 粒子（FxTemporaire 死亡特效，死亡时才激活/播发）不因激活态漏扫。出生实例化后与死亡触发（StartDeath）各调一次。
         /// 查表不到（非敌人粒子材质）不干预保持原样；贴图缺失时日志声明且不换默认材质。
         /// 修复写共享材质实例：同一材质的所有渲染体/后续生成一并恢复（幂等，之后 mainTexture 非空直接跳过）。
         /// </summary>
