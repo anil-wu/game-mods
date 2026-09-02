@@ -33,6 +33,30 @@ namespace Com.Zombtoy.Enemy
         /// <summary>接触攻击距离（触发 collider 半径的默认校准值，资源迁移时按 prefab 校准）。</summary>
         public const float ContactRange = 2.0f;
 
+        // ---- 远程火球（契约 §3 序 4，M2；数值对齐原版 EnemyProjectile.prefab 字段与行为） ----
+        /// <summary>火球飞行速度：原版 EnemyProjectile.prefab speed=4，但移动代码把 speed 乘了两次
+        /// （Translate((0,0,speed)*speed*dt)，实际 16 m/s）——按实际行为对齐（25m 射程 ~1.6s 到达）。</summary>
+        public const float FireballSpeed = 16f;
+
+        /// <summary>投射物存活时长（原版 Destroy(gameObject, 10f)：超时销毁）。</summary>
+        public const float ProjectileLifetime = 10f;
+
+        /// <summary>火球命中判距（XZ 平面近似）：原版 OverlapSphere(0.6) 撞玩家 collider（胶囊半径≈0.5）→ 判定半径≈1.1，取 1.5 覆盖摆位误差。</summary>
+        public const float ProjectileHitRadius = 1.5f;
+
+        /// <summary>投射物出膛高度（逻辑 Y；视觉近似原版 Clown shootPoint 子对象高度，契约 §2 逻辑权威）。</summary>
+        public const float ProjectileHeight = 1.2f;
+
+        // ---- Titan 地面锁定（契约 §3 序 5，M2；数值对齐原版 EnemyTargetShooting / EnemyRocket Variant） ----
+        /// <summary>准星追踪 lerp 速率（原版 EnemyTargetShooting：Vector3.Lerp(groundTarget, player, Time.deltaTime*5)）。</summary>
+        public const float BossLockLerpRate = 5f;
+
+        /// <summary>Titan 落点 AOE 半径（原版 EnemyProjectile rocket 爆炸半径 explosionRadius=3.0；契约 §3 序 5 落点 AOE）。</summary>
+        public const float BossAoeRadius = 3f;
+
+        /// <summary>Titan 火箭视图飞行速度（原版 EnemyRocket Variant speed=3.5 × 双乘 → 实际 12.25 m/s；纯视图表现，逻辑 AOE 即时）。</summary>
+        public const float RocketVisualSpeed = 12.25f;
+
         // ---- 出生点（Rule 3 本 Mod 自持；与 game Mod Level 场景标记保持一致，契约 §9 同步约束） ----
         public static readonly (float X, float Y, float Z)[] SpawnPoints =
         {
@@ -96,8 +120,8 @@ namespace Com.Zombtoy.Enemy
             new(EnemyKind.GiantZombunny,  500, 100, 2.2f, AttackKind.Contact,     25, ContactRange, 0.5f, false,  8, 2.5f,  8.0f,   6, 1, 1, 10f),
             new(EnemyKind.GiantZomBear,   700, 100, 1.8f, AttackKind.Contact,     30, ContactRange, 0.5f, false,  6, 3.0f,  9.0f,   5, 1, 1, 20f),
             new(EnemyKind.GiantHellephant,900, 100, 1.5f, AttackKind.Contact,     35, ContactRange, 0.5f, false,  4, 3.5f, 10.0f,   4, 1, 1, 30f),
-            new(EnemyKind.Titan,         2000, 500, 1.2f, AttackKind.GroundTarget, 60, 15f,         3.0f, true,  2, 5.0f, 12.0f,   1, 1, 1, 45f), // 首领：BlastImmunity（契约 §9）
-            new(EnemyKind.Clown,          100, 100, 2.8f, AttackKind.Fireball,    40, 25f,         1.5f, false,  8, 2.0f,  7.0f,   4, 1, 1, 15f), // 远程（M2）
+            new(EnemyKind.Titan,         2000, 500, 1.2f, AttackKind.GroundTarget, 60, 15f,         3.0f, true,  2, 5.0f, 12.0f,   1, 1, 1, 45f), // 首领：BlastImmunity + 地面锁定 AOE（契约 §3 序 5，M2）
+            new(EnemyKind.Clown,          100, 100, 2.8f, AttackKind.Fireball,    40, 25f,         1.5f, false,  8, 2.0f,  7.0f,   4, 1, 1, 15f), // 远程（契约 §3 序 4，M2）
             new(EnemyKind.MiniClown,       20,  50, 4.0f, AttackKind.Contact,      5, ContactRange, 0.5f, false,  0, 1.0f,  4.0f,  10, 2, 3,  0f), // 由 Clown 生成（M2）
             new(EnemyKind.ZomDuck,        100, 100, 4.5f, AttackKind.Contact,     10, ContactRange, 0.5f, false, 14, 1.0f,  5.0f,  12, 1, 2,  0f),
         };

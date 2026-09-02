@@ -1,6 +1,6 @@
 # com.zombtoy.enemy 契约文档（Rule 19：契约 = 文档）
 
-> 定位：敌人——10 种类型 + 加权生成器 + 追击/接触伤害/远程（M2）/首领 Titan（M2）+ 死亡计分。
+> 定位：敌人——10 种类型 + 加权生成器 + 追击/接触伤害/远程（Clown 火球）/首领 Titan（地面锁定 AOE）+ 死亡计分。
 > 单机 Host。线格式约定同 summary §0（ModCall=DataCodec 元组，Message=字段编号）。
 > 敌人实体由本 Mod 创建/销毁；**视图（EnemyView）挂 EntityId**，武器射线命中 collider → 取 EntityId → `enemy:damage`（§8）。
 
@@ -28,15 +28,20 @@ public struct EnemySpawner  : IComponent { public bool Enabled; public float Tim
 
 生成器每次生成：`context.Ecs.CreateEntity()` 建敌人实体（归属本 Mod），视图经静态桥实例化 prefab 并绑定 EntityId。
 
+```csharp
+public struct EnemyProjectile : IComponent { public byte Kind; public int Damage; public uint Source; public float Speed; public float Lifetime; public float X, Y, Z; public float DirX, DirY, DirZ; } // M2：Clown 火球逻辑投射物（直线无追踪）；Kind=EnemyProjectileKind（Fireball/Rocket）
+public struct EnemyBossLock  : IComponent { public bool Tracking; public float Charge; public float X, Z; }            // M2：Titan 地面锁定（准星落点 X/Z + 蓄力进度，仅本 Mod 视图读）
+```
+
 ## 3. ECS 系统（职责 / 读写组件 / 更新顺序）
 
 | 序 | 系统 | 职责 | 读 | 写 | 跨 Mod / 消息 |
 |---|---|---|---|---|---|
 | 1 | `EnemySpawnSystem` | 加权生成表 + 每类型冷却/并发上限/startBuffer + 全局并发上限 50 + 间隔衰减（3s→×0.99→下限 0.6s）；仅在 Enabled 且玩家存活时生成；生成即发 ZombieCountChanged | EnemySpawner, EnemyType 表（config） | EnemySpawner | 调 `player:get_position`（存活判定） |
 | 2 | `EnemyChaseSystem` | 追击：每帧取玩家位置（`player:get_position`）→ 计算敌人期望朝向/速度（SpeedMul 缓速生效）→ 写 EnemyMovement；视图 NavMesh 按此驱动 | EnemyPosition, EnemyMovement, EnemyFlags | EnemyMovement | 调 `player:get_position` |
-| 3 | `EnemyAttackSystem` | 接触伤害：EnemyFlags 存活 + 与玩家距离 ≤ Range + 冷却到 → 调 `player:damage`；GroundTarget/Fireball 类型在此不处理（交给 Ranged/Boss，M2） | EnemyAttack, EnemyPosition, EnemyFlags | EnemyAttack.Cooldown | 调 `player:damage` |
-| 4 | `EnemyRangedSystem`（M2） | Clown 火球：射程内冷却 → 生成 EnemyProjectile 逻辑实体 + 视图；投射物命中逻辑同武器投射物（M2 细化） | EnemyAttack, EnemyPosition, EnemyFlags | — | 调 `player:damage`（命中时） |
-| 5 | `EnemyBossSystem`（M2） | Titan：地面锁定准星（独立 decal，不复刻原版 groundTarget bug）→ 蓄力 → 落点 AOE 调 `player:damage` | EnemyFlags, EnemyPosition | — | 调 `player:damage` |
+| 3 | `EnemyAttackSystem` | 接触伤害：EnemyFlags 存活 + 与玩家距离 ≤ Range + 冷却到 → 调 `player:damage`；只处理 Contact，GroundTarget/Fireball 类型交给 Ranged/Boss | EnemyAttack, EnemyPosition, EnemyFlags | EnemyAttack.Cooldown | 调 `player:damage` |
+| 4 | `EnemyRangedSystem` | Clown 火球：射程内冷却 → 生成 EnemyProjectile 逻辑实体（直线飞行、无追踪）+ 视图请求；命中玩家 → 调 `player:damage`；超时/命中销毁实体+视图 | EnemyAttack, EnemyPosition, EnemyFlags, EnemyProjectile | EnemyAttack.Cooldown | 调 `player:damage`（命中时） |
+| 5 | `EnemyBossSystem` | Titan：射程内准星（独立 decal，不复刻原版 groundTarget 绑地板 bug）向玩家 XZ lerp 追踪 + 蓄力（蓄力时长 = Interval）→ 落点 AOE（半径 3.0）调 `player:damage`；玩家跑出 AOE 圈可躲 | EnemyFlags, EnemyPosition, EnemyBossLock | EnemyBossLock | 调 `player:damage` |
 | 6 | `EnemyHealthSystem` | 死亡后置：IsSinking 下沉计时 → 到点销毁实体 + 通知视图销毁（视图下沉由 EnemyView 动画处理）；IsDead 后每帧确认不再追击 | EnemyFlags, EnemyHealth | EnemyFlags | 通知视图（静态桥） |
 
 **扣血在 `enemy:damage` 能力实现内同步执行**（返回 killed 需要当场结果）：扣血 → 若死：置 IsDead/IsSinking、发 `enemy:EnemyKilled`、`enemy:ZombieCountChanged`（-1）、通知视图播放死亡；返回 `[true]`。
@@ -125,8 +130,8 @@ public struct EnemySpawner  : IComponent { public bool Enabled; public float Tim
 | GiantZombunny | 500 | 100 | 2.2 | 接触 25 / 0.5s | |
 | GiantZomBear | 700 | 100 | 1.8 | 接触 30 / 0.5s | |
 | GiantHellephant | 900 | 100 | 1.5 | 接触 35 / 0.5s | |
-| Titan | 2000 | 500 | 1.2 | 地面锁定 AOE（M2） | 首领；BlastImmunity=true |
-| Clown | 100 | 100 | 2.8 | 火球 40（M2），射程 25 | 远程 |
+| Titan | 2000 | 500 | 1.2 | 地面锁定 AOE | 首领；BlastImmunity=true |
+| Clown | 100 | 100 | 2.8 | 火球 40，射程 25 | 远程 |
 | MiniClown | 20 | 50 | 4.0 | 接触 5 | 由 Clown 生成（M2） |
 | ZomDuck | 100 | 100 | 4.5 | 接触 10 | 快速 |
 

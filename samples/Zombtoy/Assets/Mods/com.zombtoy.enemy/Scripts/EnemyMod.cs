@@ -8,7 +8,8 @@ using Game.Mod.Runtime;
 namespace Com.Zombtoy.Enemy
 {
     /// <summary>
-    /// 敌人 Mod（com.zombtoy.enemy）：10 种类型 + 加权生成器 + 追击/接触伤害 + 生命/死亡 + 计数。
+    /// 敌人 Mod（com.zombtoy.enemy）：10 种类型 + 加权生成器 + 追击/接触伤害 + 远程火球（Clown，M2）
+    /// + 首领地面锁定（Titan，M2）+ 生命/死亡 + 计数。
     /// 单机 Host（HasClient+HasServer）：逻辑全部注册为 SystemSide.Server（summary §0.1），
     /// 视图（MonoBehaviour）经静态桥与逻辑共享同一 World（同 player Mod 模式）。
     /// 扣血在 enemy:damage 能力内同步执行并当场发消息（契约 §4/§0.5）；系统只做周期行为（生成/追击/攻击/下沉清理）。
@@ -50,6 +51,13 @@ namespace Com.Zombtoy.Enemy
         public static event Action<uint>? OnEnemyKilled;
         public static event Action<uint>? OnEnemyDestroyed;
 
+        /// <summary>投射物视图静态桥（契约 §3 序 4，M2）：宿主 EnemyProjectileView 订阅实例化原投射物 prefab。</summary>
+        public static event Action<uint, byte>? OnProjectileSpawned;   // (投射物实体, EnemyProjectileKind)
+        public static event Action<uint>? OnProjectileDestroyed;
+
+        /// <summary>Boss 落点表现（契约 §3 序 5，M2）：(敌人实体, 落点X, 落点Z)——宿主 EnemyBossView 发射 Rocket Variant 视觉火箭。</summary>
+        public static event Action<uint, float, float>? OnBossStrike;
+
         public void Register(IModContext context)
         {
             Context = context;
@@ -64,6 +72,8 @@ namespace Com.Zombtoy.Enemy
             context.Ecs.RegisterComponent(typeof(EnemyTarget));
             context.Ecs.RegisterComponent(typeof(EnemyPosition));
             context.Ecs.RegisterComponent(typeof(EnemySpawner));
+            context.Ecs.RegisterComponent(typeof(EnemyProjectile)); // M2：远程火球（契约 §3 序 4）
+            context.Ecs.RegisterComponent(typeof(EnemyBossLock));   // M2：Titan 地面锁定状态（契约 §3 序 5）
 
             // 2. 能力导出（§12.11；二进制 ABI Rule 14：DataCodec 编解码纯数据）
             context.Mods.Export(DamageCap, reader => DataCodec.Write(ApplyDamage(DataCodec.Read(reader))));
@@ -78,11 +88,13 @@ namespace Com.Zombtoy.Enemy
                 // 3. 追击目标定位（契约 §7：player:get_entity，Register 时取一次）
                 PlayerEntityId = FetchPlayerEntity();
 
-                // 4. 系统（契约 §3 顺序：Spawn → Chase → Attack → Health(死亡清理)；Ranged/Boss 为 M2）
+                // 4. 系统（契约 §3 顺序：Spawn → Chase → Attack(接触) → Ranged(火球+投射物) → Boss(地面锁定) → Health(死亡清理)）
                 _spawnSystem = new EnemySpawnSystem(context);
                 context.Ecs.RegisterSystem(_spawnSystem, SystemSide.Server);
                 context.Ecs.RegisterSystem(new EnemyChaseSystem(context), SystemSide.Server);
                 context.Ecs.RegisterSystem(new EnemyAttackSystem(context), SystemSide.Server);
+                context.Ecs.RegisterSystem(new EnemyRangedSystem(context), SystemSide.Server); // M2
+                context.Ecs.RegisterSystem(new EnemyBossSystem(context), SystemSide.Server);   // M2
                 context.Ecs.RegisterSystem(new EnemyHealthSystem(context), SystemSide.Server);
 
                 // 5. 生成器实体（单实体状态机，契约 §2；Enabled 初始开：对齐原版 StartSpawning，
@@ -108,6 +120,9 @@ namespace Com.Zombtoy.Enemy
             OnEnemySpawned = null;
             OnEnemyKilled = null;
             OnEnemyDestroyed = null;
+            OnProjectileSpawned = null;
+            OnProjectileDestroyed = null;
+            OnBossStrike = null;
             _spawnSystem = null;
             World = null!;
             Context = null!;
@@ -202,19 +217,22 @@ namespace Com.Zombtoy.Enemy
             return new object?[] { true };
         }
 
-        /// <summary>enemy:reset：[] → [ok bool]（game:start 调用，契约 §4：销毁全部敌人+视图、ActiveCount=0、
+        /// <summary>enemy:reset：[] → [ok bool]（game:start 调用，契约 §4：销毁全部敌人+投射物+视图、ActiveCount=0、
         /// 间隔=base 3s、发 ZombieCountChanged(0)）。</summary>
         private static object?[] Reset()
         {
             if (World is null || SpawnerEntityId == 0) return new object?[] { false };
 
-            // 销毁全部敌人实体（含下沉尸体）+ 通知视图
+            // 销毁全部敌人实体（含下沉尸体）+ 投射物实体（M2：飞行中的火球）并通知视图
             var stale = new List<uint>();
             foreach (var (id, _) in World.Store<EnemyType>().All()) stale.Add(id);
+            foreach (var (id, _) in World.Store<EnemyProjectile>().All()) stale.Add(id);
             foreach (var id in stale)
             {
-                NotifyEnemyDestroyed(id);
-                World.Destroy(new Entity(id));
+                var e = new Entity(id);
+                if (World.Has<EnemyType>(e)) NotifyEnemyDestroyed(id);
+                else NotifyProjectileDestroyed(id);
+                World.Destroy(e);
             }
 
             var se = new Entity(SpawnerEntityId);
@@ -236,6 +254,23 @@ namespace Com.Zombtoy.Enemy
         internal static void NotifyEnemySpawned(uint id) => OnEnemySpawned?.Invoke(id);
         internal static void NotifyEnemyKilled(uint id) => OnEnemyKilled?.Invoke(id);
         internal static void NotifyEnemyDestroyed(uint id) => OnEnemyDestroyed?.Invoke(id);
+        internal static void NotifyProjectileSpawned(uint id, byte kind) => OnProjectileSpawned?.Invoke(id, kind);
+        internal static void NotifyProjectileDestroyed(uint id) => OnProjectileDestroyed?.Invoke(id);
+        internal static void NotifyBossStrike(uint enemyId, float x, float z) => OnBossStrike?.Invoke(enemyId, x, z);
+
+        /// <summary>调用 player:damage（二进制 ModCall，契约 §7；攻击归属 source=敌人实体）。
+        /// 玩家未加载/解析失败时本次攻击落空，不中断系统（接触/远程/AOE 共用）。</summary>
+        internal static void DamagePlayer(uint source, int amount)
+        {
+            try
+            {
+                Context.Mods.Call(PlayerModId, PlayerDamageCap, DataCodec.Write(new object?[] { amount, source }));
+            }
+            catch (Exception)
+            {
+                // 玩家未加载（卸载竞态）：本次攻击落空，不中断系统
+            }
+        }
 
         /// <summary>调用 player:get_position（追击目标点 + 存活判定）；玩家未加载/解析失败 → null。</summary>
         public static (float X, float Y, float Z, bool Alive)? TryGetPlayerPosition(IModContext ctx)

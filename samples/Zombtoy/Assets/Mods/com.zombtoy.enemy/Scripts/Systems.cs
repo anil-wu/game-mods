@@ -8,8 +8,8 @@ namespace Com.Zombtoy.Enemy
     /// <summary>
     /// 敌人周期系统（契约 §3，全部 SystemSide.Server：Host 单机 = 全逻辑端，无头测试用 UpdateAll）。
     /// 扣血不走系统：enemy:damage 在能力实现内同步执行并当场发消息（契约 §0.5/§4）；
-    /// 系统只做周期行为（生成/追击/接触伤害/下沉清理）。Ranged（Clown）/Boss（Titan）为 M2，本版不实现。
-    /// 更新顺序（按注册序）：Spawn → Chase → Attack → Health(死亡清理)。
+    /// 系统只做周期行为（生成/追击/接触伤害/远程火球/首领锁定/下沉清理）。
+    /// 更新顺序（按注册序）：Spawn → Chase → Attack(接触) → Ranged(Clown 火球+投射物) → Boss(Titan 地面锁定) → Health(死亡清理)。
     /// </summary>
 
     /// <summary>
@@ -262,7 +262,8 @@ namespace Com.Zombtoy.Enemy
 
     /// <summary>
     /// 接触伤害（序 3）：EnemyFlags 存活 + 与玩家距离 ≤ Range + 冷却到 → 调 player:damage（二进制 ModCall）。
-    /// Fireball/GroundTarget 类型在此不处理（Clown 火球 / Titan 地面锁定，M2，契约 §3 序 4/5）。
+    /// 只处理 AttackKind.Contact；Fireball/GroundTarget 由 Ranged/Boss 系统各自结算（契约 §3 序 3/4/5），
+    /// 本系统不触碰它们的 Cooldown（避免双系统同字段递减）。
     /// </summary>
     public sealed class EnemyAttackSystem : ISystem
     {
@@ -278,43 +279,180 @@ namespace Com.Zombtoy.Enemy
             foreach (var (e, attack, pos, flags) in ctx.Query<EnemyAttack, EnemyPosition, EnemyFlags>())
             {
                 if (flags.IsDead) continue;
+                if (attack.Kind != (byte)AttackKind.Contact) continue; // 远程/首领交给 Ranged/Boss（序 4/5）
 
                 var a = attack;
                 a.Cooldown -= ctx.DeltaTime;
-
-                if (a.Kind != (byte)AttackKind.Contact)
+                if (a.Cooldown <= 0f)
                 {
-                    // 远程/首领类别交给 Ranged/Boss（M2），接触系统只结算 Contact
-                    ctx.World.Add(e, a);
-                    continue;
-                }
-                if (a.Cooldown > 0f)
-                {
-                    ctx.World.Add(e, a);
-                    continue;
-                }
-
-                var dx = player.Value.X - pos.X;
-                var dz = player.Value.Z - pos.Z;
-                if (dx * dx + dz * dz <= a.Range * a.Range)
-                {
-                    a.Cooldown = a.Interval;
-                    CallPlayerDamage(e.Id, a.Damage); // player:damage([amount, source])，契约 §3 序 3 / player §3
+                    var dx = player.Value.X - pos.X;
+                    var dz = player.Value.Z - pos.Z;
+                    if (dx * dx + dz * dz <= a.Range * a.Range)
+                    {
+                        a.Cooldown = a.Interval;
+                        EnemyMod.DamagePlayer(e.Id, a.Damage); // player:damage([amount, source])，契约 §3 序 3 / player §3
+                    }
                 }
                 ctx.World.Add(e, a);
             }
         }
+    }
 
-        private void CallPlayerDamage(uint source, int amount)
+    /// <summary>
+    /// 远程火球（序 4，Clown，AttackKind.Fireball）：射程内冷却到 → 生成 EnemyProjectile 逻辑实体
+    /// （契约 §2/§3 序 4）+ 视图请求（静态桥）；投射物直线飞行（原版 EnemyProjectile 无追踪、穿墙），
+    /// 命中玩家 → player:damage(开火时固化的 Damage)；超时（原版 10s）或命中后销毁实体并通知视图。
+    /// 本系统同时扮演投射物模拟系统（契约 §3 序 4 职责含"投射物命中逻辑"，注册序即契约表序）。
+    /// </summary>
+    public sealed class EnemyRangedSystem : ISystem
+    {
+        private readonly IModContext _context;
+
+        public EnemyRangedSystem(IModContext context) => _context = context;
+
+        public void Update(SystemContext ctx)
         {
-            try
+            var player = EnemyMod.TryGetPlayerPosition(_context); // 每帧取一次（开火判定 + 投射物命中判定）
+
+            // 阶段一：Fireball 类敌人（Clown）开火
+            if (player is not null && player.Value.Alive)
             {
-                _context.Mods.Call(EnemyMod.PlayerModId, EnemyMod.PlayerDamageCap,
-                    DataCodec.Write(new object?[] { amount, source }));
+                foreach (var (e, attack, pos, flags) in ctx.Query<EnemyAttack, EnemyPosition, EnemyFlags>())
+                {
+                    if (flags.IsDead) continue;
+                    if (attack.Kind != (byte)AttackKind.Fireball) continue;
+
+                    var a = attack;
+                    a.Cooldown -= ctx.DeltaTime;
+                    var dx = player.Value.X - pos.X;
+                    var dz = player.Value.Z - pos.Z;
+                    if (a.Cooldown <= 0f && dx * dx + dz * dz <= a.Range * a.Range)
+                    {
+                        a.Cooldown = a.Interval;
+                        SpawnFireball(ctx, e.Id, a.Damage, pos, player.Value);
+                    }
+                    ctx.World.Add(e, a);
+                }
             }
-            catch (Exception)
+
+            // 阶段二：已有投射物直线飞行 / 命中 / 超时（与玩家死亡无关，飞行照常直到超时/命中）
+            foreach (var (e, p) in ctx.Query<EnemyProjectile>())
             {
-                // 玩家未加载（卸载竞态）：本次攻击落空，不中断系统
+                var proj = p;
+                proj.Lifetime -= ctx.DeltaTime;
+                if (proj.Lifetime <= 0f)
+                {
+                    // 超时销毁（原版 Destroy(gameObject, 10f)：未命中自然消散）
+                    EnemyMod.NotifyProjectileDestroyed(e.Id);
+                    ctx.World.Destroy(e);
+                    continue;
+                }
+                proj.X += proj.DirX * proj.Speed * ctx.DeltaTime;
+                proj.Y += proj.DirY * proj.Speed * ctx.DeltaTime;
+                proj.Z += proj.DirZ * proj.Speed * ctx.DeltaTime;
+
+                // 命中玩家（直线无追踪；命中判距见 EnemyConfig.ProjectileHitRadius，原版 OverlapSphere 0.6 近似）
+                if (player is not null && player.Value.Alive)
+                {
+                    var hx = player.Value.X - proj.X;
+                    var hz = player.Value.Z - proj.Z;
+                    if (hx * hx + hz * hz <= EnemyConfig.ProjectileHitRadius * EnemyConfig.ProjectileHitRadius)
+                    {
+                        EnemyMod.DamagePlayer(proj.Source, proj.Damage); // 命中 → player:damage（契约 §3 序 4）
+                        EnemyMod.NotifyProjectileDestroyed(e.Id); // 命中销毁视图
+                        ctx.World.Destroy(e);
+                        continue;
+                    }
+                }
+                ctx.World.Add(e, proj);
+            }
+        }
+
+        /// <summary>生成一个火球投射物实体（归属本 ModObject）+ 视图请求（契约 §3 序 4 / §8）。
+        /// 出膛点 = 敌人头顶出膛高度（EnemyConfig.ProjectileHeight），方向 = 水平指向玩家开火时位置（无追踪）。</summary>
+        private void SpawnFireball(SystemContext ctx, uint source, int damage, in EnemyPosition from,
+            in (float X, float Y, float Z, bool Alive) target)
+        {
+            var dx = target.X - from.X;
+            var dz = target.Z - from.Z;
+            var dist = (float)Math.Sqrt(dx * dx + dz * dz);
+            if (dist < 0.001f) { dx = 0f; dz = 1f; dist = 1f; } // 玩家在脚下时向上方向退化（防御）
+
+            var e = _context.Ecs.CreateEntity();
+            ctx.World.Add(e, new EnemyProjectile
+            {
+                Kind = (byte)EnemyProjectileKind.Fireball,
+                Damage = damage,
+                Source = source,
+                Speed = EnemyConfig.FireballSpeed,
+                Lifetime = EnemyConfig.ProjectileLifetime,
+                X = from.X,
+                Y = EnemyConfig.ProjectileHeight,
+                Z = from.Z,
+                DirX = dx / dist,
+                DirY = 0f,
+                DirZ = dz / dist,
+            });
+            EnemyMod.NotifyProjectileSpawned(e.Id, (byte)EnemyProjectileKind.Fireball);
+        }
+    }
+
+    /// <summary>
+    /// 首领地面锁定（序 5，Titan，AttackKind.GroundTarget）：射程内准星（独立 decal，不复刻原版 groundTarget
+    /// 绑地板/Floor-collider 的 bug）向玩家 XZ lerp 追踪 + 蓄力（蓄力时长 = Attack.Interval，原版 cooldown
+    /// 语义：准星锁定期间到点即射）→ 蓄力完成在落点做 AOE：玩家距落点 ≤ BossAoeRadius（原版火箭爆炸半径 3.0）
+    /// → 调 player:damage；并通知视图发射 EnemyRocket Variant 视觉火箭（契约 §3 序 5）。
+    /// 玩家跑出 AOE 圈可躲（对齐原版"火箭落点可躲避"）；出射程/玩家死亡 → 停止追踪与蓄力（准星隐藏）。
+    /// </summary>
+    public sealed class EnemyBossSystem : ISystem
+    {
+        private readonly IModContext _context;
+
+        public EnemyBossSystem(IModContext context) => _context = context;
+
+        public void Update(SystemContext ctx)
+        {
+            var player = EnemyMod.TryGetPlayerPosition(_context);
+            var alive = player is not null && player.Value.Alive;
+
+            foreach (var (e, attack, pos, flags) in ctx.Query<EnemyAttack, EnemyPosition, EnemyFlags>())
+            {
+                if (flags.IsDead) continue;
+                if (attack.Kind != (byte)AttackKind.GroundTarget) continue;
+
+                // 锁定状态懒建：初始落点 = 敌人当前位置（准星从敌人脚下起步 lerp，原版 groundTarget 起始姿态）
+                var st = ctx.World.TryGet<EnemyBossLock>(e, out var s)
+                    ? s
+                    : new EnemyBossLock { X = pos.X, Z = pos.Z };
+
+                var inRange = false;
+                if (alive)
+                {
+                    var rx = player!.Value.X - pos.X;
+                    var rz = player.Value.Z - pos.Z;
+                    inRange = rx * rx + rz * rz <= attack.Range * attack.Range;
+                }
+                st.Tracking = inRange; // 准星只在射程内（原版 targetActive = Range.inRange）
+
+                if (inRange)
+                {
+                    // 蓄力 + 准星 lerp 追踪玩家（原版 EnemyTargetShooting：Lerp(groundTarget, playerPos, dt*5)）
+                    st.Charge += ctx.DeltaTime;
+                    var t = Math.Min(1f, ctx.DeltaTime * EnemyConfig.BossLockLerpRate);
+                    st.X += (player!.Value.X - st.X) * t;
+                    st.Z += (player.Value.Z - st.Z) * t;
+
+                    if (st.Charge >= attack.Interval)
+                    {
+                        st.Charge = 0f; // 蓄力完成 → 落点 AOE（契约 §3 序 5）
+                        var ax = player.Value.X - st.X;
+                        var az = player.Value.Z - st.Z;
+                        if (ax * ax + az * az <= EnemyConfig.BossAoeRadius * EnemyConfig.BossAoeRadius)
+                            EnemyMod.DamagePlayer(e.Id, attack.Damage); // 玩家仍在落点 AOE 圈内 → 伤害
+                        EnemyMod.NotifyBossStrike(e.Id, st.X, st.Z); // 视图：EnemyRocket Variant 视觉火箭（即使玩家躲开也表现）
+                    }
+                }
+                ctx.World.Add(e, st);
             }
         }
     }

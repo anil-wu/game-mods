@@ -15,7 +15,8 @@ namespace TestRunner
     /// 加权生成表（权重分布/startBuffer 门控/全局并发上限 50/Titan 每类型并发 1）、
     /// 能力（damage 扣血/致死/爆炸免疫、apply_slow、get_all、get_count、set_spawning、reset）、
     /// 消息（EnemyKilled / ZombieCountChanged 二进制字段）、
-    /// 系统（追击目标获取与移动/缓速衰减/接触伤害/下沉清理）、契约测试向量自校验（§14.11.3）、卸载清理（Rule 20）。
+    /// 系统（追击目标获取与移动/缓速衰减/接触伤害/远程火球生成·命中·超时（M2）/Titan 锁定 AOE（M2）/下沉清理）、
+    /// 契约测试向量自校验（§14.11.3）、卸载清理（Rule 20）。
     /// </summary>
     public static class ZombtoyEnemyTests
     {
@@ -129,6 +130,14 @@ namespace TestRunner
             throw new Exception("无敌人实体");
         }
 
+        /// <summary>全部投射物实体（M2：EnemyRangedSystem 产出，契约 §3 序 4）。</summary>
+        private static System.Collections.Generic.List<uint> AllProjectiles(Fixture f)
+        {
+            var list = new System.Collections.Generic.List<uint>();
+            foreach (var (id, _) in f.World.Store<EnemyProjectile>().All()) list.Add(id);
+            return list;
+        }
+
         private static int AliveCountOf(Fixture f, EnemyKind kind)
         {
             var n = 0;
@@ -153,7 +162,7 @@ namespace TestRunner
             Assert.Equal(EnemyConfig.BaseSpawnTime, sp.Timer);
             Assert.Equal(0, sp.ActiveCount);
             Assert.Equal(EnemyConfig.BaseSpawnTime, sp.SpawnInterval);
-            Assert.Equal(4, f.Host.Systems.CountOf(EnemyId)); // Spawn/Chase/Attack/Health（契约 §3 序 1/2/3/6）
+            Assert.Equal(6, f.Host.Systems.CountOf(EnemyId)); // Spawn/Chase/Attack/Ranged/Boss/Health（契约 §3 序 1..6）
             // 追击目标定位（契约 §7：player:get_entity，Register 时取一次）
             Assert.Equal(PlayerMod.LocalPlayerEntityId, EnemyMod.PlayerEntityId);
         }
@@ -467,6 +476,108 @@ namespace TestRunner
             Assert.True(!f2.World.Get<EnemyFlags>(new Entity(far)).IsDead);
         }
 
+        // ---- M2：远程火球（契约 §3 序 4，Clown AttackKind.Fireball）----
+
+        [Test]
+        public static void Ranged_Fireball_SpawnsProjectile_AndHitsPlayer()
+        {
+            var f = Fixture.Create();
+            var clown = SpawnTestEnemy(f, EnemyKind.Clown, 10f, 0f, 0f); // 射程 25 内（契约 §9），冷却 0 → 首帧即发
+            f.Tick(1);
+
+            var shots = AllProjectiles(f);
+            Assert.True(shots.Count >= 1, "射程内冷却到未生成火球");
+            var p = f.World.Get<EnemyProjectile>(new Entity(shots[0]));
+            Assert.Equal((byte)EnemyProjectileKind.Fireball, p.Kind);
+            Assert.Equal(EnemyConfig.Of(EnemyKind.Clown).AttackDamage, p.Damage); // 40（契约 §9）
+            Assert.Equal(EnemyConfig.FireballSpeed, p.Speed);                     // 对齐原版实际速率
+            Assert.True(p.DirX < 0f && p.DirZ == 0f, $"方向未指向玩家: ({p.DirX},{p.DirZ})"); // 玩家在原点 → 沿 -X
+            Assert.True(f.World.TryGet<EnemyBossLock>(new Entity(clown), out _) == false, "Clown 不应建 Boss 锁定状态");
+
+            f.Tick(20); // 再 1s：16m/s × 10m 早已命中（~0.7s）→ 扣 40，投射物命中即销毁
+            Assert.Equal(60, f.World.Get<PlayerHealth>(f.Player).Current); // 100-40（一次命中；1.05s 未到 1.5s 第二次开火）
+            Assert.Equal(0, AllProjectiles(f).Count);                     // 命中后销毁实体
+            Assert.True(!f.World.Get<EnemyFlags>(new Entity(clown)).IsDead);
+        }
+
+        [Test]
+        public static void Ranged_Fireball_OutOfRange_NoFire()
+        {
+            var f = Fixture.Create();
+            SpawnTestEnemy(f, EnemyKind.Clown, 35f, 0f, 0f); // 射程 25 外（契约 §9）
+            f.Tick(40); // 2s：追击 2.8m/s 推进 ~5.6m → 仍 29.4m 外 → 不生成火球
+            Assert.Equal(0, AllProjectiles(f).Count);
+            Assert.Equal(100, f.World.Get<PlayerHealth>(f.Player).Current);
+
+            f.Tick(200); // 再 10s：追击进入射程（25m，~71 帧）后开火 → 火球命中扣血
+            Assert.True(f.World.Get<PlayerHealth>(f.Player).Current < 100, "进入射程后未发生火球伤害");
+        }
+
+        [Test]
+        public static void Projectile_Timeout_Destroyed()
+        {
+            var f = Fixture.Create();
+            SpawnTestEnemy(f, EnemyKind.Clown, 5f, 0f, 0f);
+            f.Tick(1); // 首帧开火（火球朝玩家当前位置飞行）
+            Assert.Equal(1, AllProjectiles(f).Count);
+
+            f.CallPlayerBool(PlayerMod.ResetCap, 300f, 1f, 300f); // 玩家瞬移远点：火球直线无追踪 → 永不命中
+            f.Tick(220); // 再 11s > 存活期 10s（原版 Destroy(gameObject, 10f)）→ 超时销毁
+            Assert.Equal(0, AllProjectiles(f).Count);
+            Assert.Equal(100, f.World.Get<PlayerHealth>(f.Player).Current);
+        }
+
+        // ---- M2：首领 Titan 地面锁定（契约 §3 序 5，AttackKind.GroundTarget）----
+
+        [Test]
+        public static void Boss_Titan_LockAoe_DamagesPlayer_AfterCharge()
+        {
+            var f = Fixture.Create();
+            var titan = SpawnTestEnemy(f, EnemyKind.Titan, 10f, 0f, 0f); // 射程 15 内（契约 §9）
+            f.Tick(20); // 1s：准星锁定 + 蓄力中（Interval 3.0s），未到点不伤害
+            Assert.Equal(100, f.World.Get<PlayerHealth>(f.Player).Current);
+            Assert.True(f.World.TryGet<EnemyBossLock>(new Entity(titan), out var lock1)
+                        && lock1.Tracking, "射程内未进入锁定（Tracking=false）");
+            Assert.True(lock1.Charge > 0f && lock1.Charge < 3f, $"蓄力进度异常: {lock1.Charge}");
+            Assert.True(lock1.X < 9f, $"准星未向玩家追踪: X={lock1.X}"); // 从 x=10 向玩家 x=0 lerp（dt*5）
+
+            f.Tick(60); // 再 3s：蓄力 3.0s 到点 → 落点 AOE 60（契约 §9 Titan 60）
+            var hp = f.World.Get<PlayerHealth>(f.Player).Current;
+            Assert.Equal(40, hp); // 100-60（首击；4s < 6s 未二次开火）
+            Assert.True(f.World.TryGet<EnemyBossLock>(new Entity(titan), out var lock2)
+                        && lock2.Charge < 3f, "蓄力完成后未清零（应重新蓄力）");
+            Assert.Equal(0, AllProjectiles(f).Count); // Titan 落点是 AOE（契约），不产生 EnemyProjectile 实体
+        }
+
+        [Test]
+        public static void Boss_Titan_OutOfRange_NoLockNoDamage()
+        {
+            var f = Fixture.Create();
+            var titan = SpawnTestEnemy(f, EnemyKind.Titan, 30f, 0f, 0f); // 射程 15 外（契约 §9）
+            f.Tick(40); // 2s：追击 1.2m/s 推进 ~2.4m → 仍 27.6m 外 → 不锁定不蓄力不伤害
+            Assert.Equal(100, f.World.Get<PlayerHealth>(f.Player).Current);
+            Assert.True(f.World.TryGet<EnemyBossLock>(new Entity(titan), out var lockState)
+                        && !lockState.Tracking, "射程外仍在锁定（Tracking=true）");
+            Assert.Equal(0f, lockState.Charge); // 射程外不蓄力
+        }
+
+        [Test]
+        public static void Boss_Titan_StrikeOutOfAoeCircle_Evades()
+        {
+            var f = Fixture.Create();
+            var titan = SpawnTestEnemy(f, EnemyKind.Titan, 10f, 0f, 0f);
+            f.Tick(57); // 2.85s：准星已收敛到玩家（原点），蓄力将满（Interval 3.0s）
+            Assert.Equal(100, f.World.Get<PlayerHealth>(f.Player).Current);
+
+            // 蓄力完成前玩家横向跑位：仍在 Titan 射程 15 内，但离准星落点（≈原点）> AOE 3m → 落点伤害落空
+            f.CallPlayerBool(PlayerMod.ResetCap, 0f, 1f, 12f);
+            f.Tick(3); // 帧 60 = 蓄力 3.0s 到点开火；准星 3 帧只 lerp 到 z≈6.9，距玩家 12m > AOE 3m
+            Assert.Equal(100, f.World.Get<PlayerHealth>(f.Player).Current); // AOE 未罩住跑位后的玩家
+            Assert.True(f.World.TryGet<EnemyBossLock>(new Entity(titan), out var lockState)
+                        && lockState.Tracking, "跑位后仍在射程内应继续锁定");
+            Assert.True(lockState.Charge < 3f, "蓄力到点开火后未清零（应重新蓄力）");
+        }
+
         [Test]
         public static void Sink_DestroysCorpseAfterTimer()
         {
@@ -538,7 +649,7 @@ namespace TestRunner
             Assert.True(f.World.Store<EnemyType>().Count > 0, "卸载前应有敌人");
             var spawnerId = EnemyMod.SpawnerEntityId;
             Assert.True(spawnerId != 0);
-            Assert.Equal(4, f.Host.Systems.CountOf(EnemyId));
+            Assert.Equal(6, f.Host.Systems.CountOf(EnemyId));
 
             f.Host.Manager.Unload(EnemyId);
 

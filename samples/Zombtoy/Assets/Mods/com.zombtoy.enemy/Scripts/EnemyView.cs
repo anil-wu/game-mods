@@ -80,6 +80,25 @@ namespace Com.Zombtoy.Enemy
         private bool _dying;   // 死亡表现只触发一次（对齐原版 EnemyHealth.Death()/StartSinking()）
         private bool _sinking; // 下沉中（每帧 transform.Translate 下沉）
 
+        // ---- 视图注册表（同 Mod 的 EnemyBossView 定位 Titan 实例，取 GroundTarget 准星/开火位；
+        // EntityId 由宿主 EnemySpawnerView 在 AddComponent 后写入，注册放首次绑定处） ----
+        private static readonly System.Collections.Generic.Dictionary<uint, EnemyView> ByEntityId = new();
+
+        /// <summary>按实体取敌人视图实例（无 = 尚未生成/已销毁/无头环境）。</summary>
+        public static bool TryGet(uint entityId, out EnemyView view) => ByEntityId.TryGetValue(entityId, out view!);
+
+        private void RegisterInstance()
+        {
+            if (EntityId == 0) return;
+            ByEntityId[EntityId] = this;
+        }
+
+        private void OnDestroy()
+        {
+            if (EntityId != 0 && ByEntityId.TryGetValue(EntityId, out var cur) && cur == this)
+                ByEntityId.Remove(EntityId);
+        }
+
         private void Awake()
         {
             // Shootable 层：武器射线命中层（宿主工程按名解析；未配置该层时保持 prefab 原层，
@@ -141,6 +160,7 @@ namespace Com.Zombtoy.Enemy
         private void BindInstance(World world, Entity e, byte kind)
         {
             _bound = true;
+            RegisterInstance(); // 视图注册表（EnemyBossView 定位 Titan 实例）
             _nav = GetComponent<NavMeshAgent>();
             _anim = GetComponent<Animator>();
             _rb = GetComponent<Rigidbody>();

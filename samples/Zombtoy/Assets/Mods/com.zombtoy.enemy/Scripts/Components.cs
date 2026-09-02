@@ -25,7 +25,7 @@ namespace Com.Zombtoy.Enemy
         ZomDuck = 9,
     }
 
-    /// <summary>攻击类别（契约 §1）：Contact 接触；Fireball=Clown 火球（M2）；GroundTarget=Titan 地面锁定（M2）。</summary>
+    /// <summary>攻击类别（契约 §1）：Contact 接触；Fireball=Clown 火球（远程）；GroundTarget=Titan 地面锁定（首领）。</summary>
     public enum AttackKind : byte
     {
         Contact = 0,
@@ -80,5 +80,43 @@ namespace Com.Zombtoy.Enemy
         public float Timer;
         public int ActiveCount;
         public float SpawnInterval;
+    }
+
+    /// <summary>投射物类别（契约 §3 序 4/5；视图按此选原 prefab）：Fireball=Clown 火球
+    /// → EnemyProjectile.prefab；Rocket=Titan 地面锁定 → EnemyRocket Variant.prefab（Boss 落点视图表现，
+    /// 逻辑 AOE 由 EnemyBossSystem 直接结算，Rocket 不建逻辑实体）。</summary>
+    public enum EnemyProjectileKind : byte
+    {
+        Fireball = 0,
+        Rocket = 1,
+    }
+
+    /// <summary>
+    /// 投射物逻辑实体（契约 §3 序 4：EnemyRangedSystem 生成，Clown 火球）。
+    /// 直线飞行（原版 EnemyProjectile：transform.Translate 沿自身前方，无追踪）：命中玩家 → player:damage；
+    /// 超时（原版 Destroy(gameObject, 10f)）/命中即销毁实体并通知视图（Rule 20：归属本 Mod，卸载强制回收）。
+    /// 位置/方向在组件内自持（逻辑权威；视图每帧读取同步 GO transform，契约 §2 语义）。
+    /// </summary>
+    public struct EnemyProjectile : IComponent
+    {
+        public byte Kind;            // EnemyProjectileKind
+        public int Damage;           // 命中伤害（契约 §9：Clown 火球 40；开火时从 EnemyAttack.Damage 固化）
+        public uint Source;          // 开火敌人实体（伤害归属）
+        public float Speed;          // 直线速度（m/s，EnemyConfig.FireballSpeed）
+        public float Lifetime;       // 剩余存活秒（原版 Destroy(gameObject, 10f)）
+        public float X, Y, Z;        // 当前逻辑位置
+        public float DirX, DirY, DirZ; // 单位飞行方向（水平直线，无追踪）
+    }
+
+    /// <summary>
+    /// Titan 地面锁定状态（契约 §3 序 5 EnemyBossSystem 专用，GroundTarget 类敌人懒建）。
+    /// Tracking=射程内锁定中（视图 decal 显隐）；Charge=蓄力进度（≥ EnemyAttack.Interval 触发落点 AOE 并清零）；
+    /// X/Z=准星（独立 decal）当前地面落点——向玩家 XZ 指数 lerp（原版 EnemyTargetShooting：Lerp(pos, player, dt*5)）。
+    /// </summary>
+    public struct EnemyBossLock : IComponent
+    {
+        public bool Tracking;
+        public float Charge;
+        public float X, Z;
     }
 }
