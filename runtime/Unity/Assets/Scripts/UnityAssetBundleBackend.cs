@@ -20,10 +20,10 @@ namespace Game.Runtime
         private static string AssetName(string contentRoot, string localPath)
         {
             var modId = Path.GetFileName(contentRoot.TrimEnd(Path.DirectorySeparatorChar));
-            var key = localPath.Replace('/', Path.DirectorySeparatorChar);
-            var withoutExt = key.Contains('.') ? key.Substring(0, key.LastIndexOf('.')) : key;
-            // Unity 的 bundle 资源名全小写（相对 Assets 的项目路径去扩展名）
-            return $"assets/mods/{modId}/{withoutExt}".ToLowerInvariant();
+            // bundle 资源名 = 相对 Assets 的项目路径（全小写、'/' 分隔、保留扩展名）；
+            // localPath 不带扩展名时交给 LoadByStem 兑底（FPS 惯例），带扩展名时精确命中。
+            var key = localPath.Replace('\\', '/').TrimStart('/');
+            return $"assets/mods/{modId}/{key}".ToLowerInvariant();
         }
 
         public object? Load(string contentRoot, string localPath)

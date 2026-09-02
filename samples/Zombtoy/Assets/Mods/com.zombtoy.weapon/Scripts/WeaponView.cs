@@ -41,9 +41,11 @@ namespace Com.Zombtoy.Weapon
             new(WeaponMod.ModIdValue, "Guns/MultiShot"),
         };
 
-        // 原枪口粒子材质（贴图不丢失；Rule 3）
+        // 原枪口粒子材质 + 贴图（贴图不丢失；Rule 3。注意：.meta GUID 会被 Unity 重导覆盖，必须按名重链贴图）
         private static readonly AssetId MuzzleFlashMat = new(WeaponMod.ModIdValue,
-            "Imported/EffectTexturesAndPrefabs/Materials/MuzzleFlash");
+            "Imported/EffectTexturesAndPrefabs/Materials/MuzzleFlash.mat");
+        private static readonly AssetId MuzzleFlashTex = new(WeaponMod.ModIdValue,
+            "Imported/EffectTexturesAndPrefabs/Textures/MuzzleFlash.tga");
 
         // 表现（4 槽枪模 + UI，Inspector 可挂载，缺省走资源加载）
         public GameObject[] WeaponPrefabs = new GameObject[WeaponConfig.SlotCount];
@@ -103,16 +105,25 @@ namespace Com.Zombtoy.Weapon
             return mat;
         }
 
-        /// <summary>给枪口粒子应用原 MuzzleFlash 材质（贴图不丢失）；加载失败回退默认粒子材质（不阻塞）。</summary>
+        /// <summary>给枪口粒子应用原 MuzzleFlash 材质并按名重链贴图（.meta GUID 会被 Unity 重导覆盖，绕过 GUID 断链）。</summary>
         private void ApplyMuzzleFlashMaterial()
         {
             if (_gunParticles == null) return;
             var psr = _gunParticles.GetComponent<ParticleSystemRenderer>();
             if (psr == null) return;
             Material? mat = null;
-            try { mat = WeaponMod.Context?.Resources.Load(MuzzleFlashMat) as Material; }
-            catch (System.Exception) { mat = null; }
-            if (mat != null) psr.sharedMaterial = mat;
+            Texture? tex = null;
+            try
+            {
+                mat = WeaponMod.Context?.Resources.Load(MuzzleFlashMat) as Material;
+                tex = WeaponMod.Context?.Resources.Load(MuzzleFlashTex) as Texture;
+            }
+            catch (System.Exception) { mat = null; tex = null; }
+            if (mat == null)
+                mat = new Material(Shader.Find("Particles/Additive") ?? Shader.Find("Particles/Standard Unlit") ?? Shader.Find("Sprites/Default"));
+            if (tex != null) { mat.SetTexture("_MainTex", tex); Debug.Log("[WeaponView] 枪口粒子贴图已按名重链 " + MuzzleFlashTex); }
+            else Debug.LogWarning("[WeaponView] 枪口粒子贴图未加载（按名失败）");
+            psr.sharedMaterial = mat;
         }
 
         private void Start()
