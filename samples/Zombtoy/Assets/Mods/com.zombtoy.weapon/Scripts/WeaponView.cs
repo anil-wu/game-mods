@@ -41,6 +41,10 @@ namespace Com.Zombtoy.Weapon
             new(WeaponMod.ModIdValue, "Guns/MultiShot"),
         };
 
+        // 原枪口粒子材质（贴图不丢失；Rule 3）
+        private static readonly AssetId MuzzleFlashMat = new(WeaponMod.ModIdValue,
+            "Imported/EffectTexturesAndPrefabs/Materials/MuzzleFlash");
+
         // 表现（4 槽枪模 + UI，Inspector 可挂载，缺省走资源加载）
         public GameObject[] WeaponPrefabs = new GameObject[WeaponConfig.SlotCount];
         public string[] WeaponNames = { "Machine Gun", "Shotgun", "Rocket Launcher", "Cryo Pistol" };
@@ -54,6 +58,7 @@ namespace Com.Zombtoy.Weapon
             _camera = GetComponentInChildren<Camera>() ?? Camera.main;
             _gunParticles = GetComponent<ParticleSystem>();
             if (_gunParticles == null) _gunParticles = gameObject.AddComponent<ParticleSystem>(); // 自建枪口粒子（不依赖 prefab）
+            ApplyMuzzleFlashMaterial(); // 应用原枪口粒子材质（否则默认粒子无贴图）
             // 注意：GetComponent 对内置组件可能返回 fake-null（is null/?? 不识别），必须用 Unity == null 判断
             _gunLine = GetComponent<LineRenderer>();
             if (_gunLine == null) _gunLine = gameObject.AddComponent<LineRenderer>(); // 自建弹道线（不依赖 prefab）
@@ -96,6 +101,18 @@ namespace Com.Zombtoy.Weapon
             var mat = shader != null ? new Material(shader) : new Material(Shader.Find("Diffuse"));
             mat.color = color;
             return mat;
+        }
+
+        /// <summary>给枪口粒子应用原 MuzzleFlash 材质（贴图不丢失）；加载失败回退默认粒子材质（不阻塞）。</summary>
+        private void ApplyMuzzleFlashMaterial()
+        {
+            if (_gunParticles == null) return;
+            var psr = _gunParticles.GetComponent<ParticleSystemRenderer>();
+            if (psr == null) return;
+            Material? mat = null;
+            try { mat = WeaponMod.Context?.Resources.Load(MuzzleFlashMat) as Material; }
+            catch (System.Exception) { mat = null; }
+            if (mat != null) psr.sharedMaterial = mat;
         }
 
         private void Start()
