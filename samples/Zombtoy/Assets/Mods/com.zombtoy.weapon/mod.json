@@ -1,6 +1,6 @@
 {
   "id": "com.zombtoy.weapon",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "entry": "Com.Zombtoy.Weapon.WeaponMod",
   "modules": {
     "shared": "com.zombtoy.weapon.dll"
