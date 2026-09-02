@@ -16,6 +16,7 @@ namespace TestRunner
     /// 能力（damage 扣血/致死/爆炸免疫、apply_slow、get_all、get_count、set_spawning、reset）、
     /// 消息（EnemyKilled / ZombieCountChanged 二进制字段）、
     /// 系统（追击目标获取与移动/缓速衰减/接触伤害/远程火球生成·命中·超时（M2）/Titan 锁定 AOE（M2）/下沉清理）、
+    /// M3 辅助行为（ZomDuck 死亡自爆 SelfDestruct / Clown 召唤 MiniClown SpawnClown / ZomBear 系回血 EnemyRegen）、
     /// 契约测试向量自校验（§14.11.3）、卸载清理（Rule 20）。
     /// </summary>
     public static class ZombtoyEnemyTests
@@ -38,6 +39,7 @@ namespace TestRunner
             public float LastKilledX, LastKilledY, LastKilledZ;
             public int CountEvents;
             public int LastCount;
+            public int BlastEvents; // M3：死亡自爆表现事件（EnemyMod.OnEnemyBlast，宿主视图用）
 
             public static Fixture Create()
             {
@@ -68,6 +70,8 @@ namespace TestRunner
                         f.CountEvents++;
                         if (reader.TryReadInt32(1, out var c)) f.LastCount = c;
                     });
+                // M3：爆炸表现静态桥（EnemyMod 卸载时清空，无跨测试残留）
+                EnemyMod.OnEnemyBlast += (_, _, _, _) => f.BlastEvents++;
                 return f;
             }
 
@@ -162,7 +166,7 @@ namespace TestRunner
             Assert.Equal(EnemyConfig.BaseSpawnTime, sp.Timer);
             Assert.Equal(0, sp.ActiveCount);
             Assert.Equal(EnemyConfig.BaseSpawnTime, sp.SpawnInterval);
-            Assert.Equal(6, f.Host.Systems.CountOf(EnemyId)); // Spawn/Chase/Attack/Ranged/Boss/Health（契约 §3 序 1..6）
+            Assert.Equal(7, f.Host.Systems.CountOf(EnemyId)); // Spawn/Chase/Attack/Ranged/Boss/Health/Aux（契约 §3 序 1..7，Aux=M3）
             // 追击目标定位（契约 §7：player:get_entity，Register 时取一次）
             Assert.Equal(PlayerMod.LocalPlayerEntityId, EnemyMod.PlayerEntityId);
         }
@@ -595,6 +599,177 @@ namespace TestRunner
             Assert.True(!f.World.Exists(new Entity(e)), "下沉到点未销毁实体");
         }
 
+        // ---- M3 辅助行为：ZomDuck 死亡自爆（SelfDestruct/IBlast，序 7） ----
+
+        [Test]
+        public static void Aux_SelfDestruct_ZomDuck_DiesNearPlayer_Blast99_AndFxEvent()
+        {
+            var f = Fixture.Create();
+            // 距玩家 XZ≈0.71 ≤ 3m（原版 SelfDestruct.Explode OverlapSphere 半径 3f）
+            var duck = SpawnTestEnemy(f, EnemyKind.ZomDuck, 0.5f, 0f, 0.5f);
+            var killed = f.CallBool(EnemyMod.DamageCap, duck, 999999, 7u, 0u);
+            Assert.True(killed);
+            Assert.True(f.World.Get<EnemyFlags>(new Entity(duck)).IsDead, "ZomDuck 致死未置 IsDead");
+            // 死亡即爆炸：玩家 100-99=1（原版 BlaseDamage=99，ZomDuckk.prefab 序列化）
+            Assert.Equal(1, f.World.Get<PlayerHealth>(f.Player).Current);
+            Assert.Equal(1, f.BlastEvents); // 爆炸表现事件（宿主 EnemyBlastView：原 CFX prefab）
+        }
+
+        [Test]
+        public static void Aux_SelfDestruct_ZomDuck_OutOfRadius_PlayerSafe_FxStillPlays()
+        {
+            var f = Fixture.Create();
+            var duck = SpawnTestEnemy(f, EnemyKind.ZomDuck, 10f, 0f, 0f); // 10m > 3m 爆圈
+            var killed = f.CallBool(EnemyMod.DamageCap, duck, 999999, 7u, 0u);
+            Assert.True(killed);
+            Assert.Equal(100, f.World.Get<PlayerHealth>(f.Player).Current); // 圈外不受伤
+            Assert.Equal(1, f.BlastEvents); // 死亡即爆炸表现照发（爆心在死亡点）
+        }
+
+        [Test]
+        public static void Aux_SelfDestruct_ZomDuck_BlastDamagesNearbyEnemies_TitanAbsorbs()
+        {
+            var f = Fixture.Create();
+            var duck = SpawnTestEnemy(f, EnemyKind.ZomDuck, 5f, 0f, 0f);
+            var zombie = SpawnTestEnemy(f, EnemyKind.Zombunny, 6.2f, 0f, 0f);  // 距爆心 1.2m
+            var titan = SpawnTestEnemy(f, EnemyKind.Titan, 7.5f, 0f, 0f);      // 距爆心 2.5m，BlastImmunity
+            // 削弱 zombie 至 10 HP：爆炸伤害 16（BlaseDamage/6=99/6，原版 int 整除）→ 致死
+            var zh = f.World.Get<EnemyHealth>(new Entity(zombie));
+            zh.Current = 10;
+            f.World.Add(new Entity(zombie), zh);
+
+            var killed = f.CallBool(EnemyMod.DamageCap, duck, 999999, 7u, 0u);
+            Assert.True(killed);
+            Assert.Equal(1, f.BlastEvents);
+            // zombie 被 16 爆炸伤害致死（sourceKind=Blast 走 enemy:damage 内裁决；连带再发 EnemyKilled）
+            Assert.True(f.World.Get<EnemyFlags>(new Entity(zombie)).IsDead, "爆炸未致死圈内 zombie");
+            Assert.Equal(0, f.World.Get<EnemyHealth>(new Entity(zombie)).Current);
+            Assert.Equal(2, f.KilledEvents); // duck + zombie（连锁致死各自发布）
+            // Titan：爆炸免疫吸收（契约 §4 sourceKind==1 && BlastImmunity → 吸收）
+            Assert.Equal(2000, f.World.Get<EnemyHealth>(new Entity(titan)).Current);
+            // 玩家：duck 距玩家 5m > 3m → 不受 99 伤害
+            Assert.Equal(100, f.World.Get<PlayerHealth>(f.Player).Current);
+        }
+
+        [Test]
+        public static void Aux_SelfDestruct_OnlyZomDuck_OtherKindsNoBlast()
+        {
+            var f = Fixture.Create();
+            var bunny = SpawnTestEnemy(f, EnemyKind.Zombunny, 0.5f, 0f, 0.5f); // 贴脸致死也不爆
+            var killed = f.CallBool(EnemyMod.DamageCap, bunny, 999999, 7u, 0u);
+            Assert.True(killed);
+            Assert.Equal(0, f.BlastEvents);
+            Assert.Equal(100, f.World.Get<PlayerHealth>(f.Player).Current);
+        }
+
+        // ---- M3 辅助行为：Clown 死亡召唤 MiniClown（SpawnClown，序 7） ----
+
+        [Test]
+        public static void Aux_SpawnClown_ClownDeath_Delayed1s_SpawnsMiniClowns_Counted()
+        {
+            var f = Fixture.Create();
+            var clown = SpawnTestEnemy(f, EnemyKind.Clown, 5f, 0f, 5f); // 死亡点（玩家在原点，远离火球纠缠）
+            var killed = f.CallBool(EnemyMod.DamageCap, clown, 999999, 7u, 0u);
+            Assert.True(killed);
+
+            // 召唤有延迟（原版 SpawnClown Invoke("Spawn", 1f)）：1s 内不生成、不计数
+            Assert.Equal(0, AliveCountOf(f, EnemyKind.MiniClown));
+            Assert.Equal(0, f.World.Get<EnemySpawner>(new Entity(EnemyMod.SpawnerEntityId)).ActiveCount);
+            f.Tick(18); // 0.9s：仍未到点
+            Assert.Equal(0, AliveCountOf(f, EnemyKind.MiniClown));
+
+            f.Tick(5); // 越过 1s 延迟（原版 spawn 时机；fp 容差）
+            var minis = AliveCountOf(f, EnemyKind.MiniClown);
+            // 两个 SpawnPoint 槽位（Clown.prefab 双 SpawnClown，clownsSpawned=1），各 15% 概率 +1 → 2..4
+            Assert.True(minis >= 2 && minis <= 4, $"MiniClown 召唤数异常: {minis}");
+
+            // 计数纳入 ActiveCount + ZombieCountChanged（任务：计数纳入）
+            var sp = f.World.Get<EnemySpawner>(new Entity(EnemyMod.SpawnerEntityId));
+            Assert.Equal(minis, sp.ActiveCount);
+            Assert.Equal(minis, f.LastCount);
+            // 出生围绕死亡 Clown 两侧 ±0.8（原版 SpawnPoint local x）且 y=0（原版 ClownSpawnPoint.y 每帧压 0）
+            foreach (var (id, type) in f.World.Store<EnemyType>().All())
+            {
+                if (type.Kind != (byte)EnemyKind.MiniClown) continue;
+                var pos = f.World.Get<EnemyPosition>(new Entity(id));
+                var dx = pos.X - 5f;
+                var dz = pos.Z - 5f;
+                Assert.True(dx * dx + dz * dz <= 2f * 2f, $"MiniClown 出生离死亡 Clown 过远: ({pos.X},{pos.Z})");
+                Assert.True(Math.Abs(pos.Y) < 0.01f, $"MiniClown y 应贴地 0: {pos.Y}");
+            }
+            Assert.Equal(1, f.KilledEvents); // 只有 Clown 击杀（MiniClown 未死不发布）
+        }
+
+        [Test]
+        public static void Aux_SpawnClown_GlobalCapFull_BlocksOverage()
+        {
+            var f = Fixture.Create();
+            var se = new Entity(EnemyMod.SpawnerEntityId);
+            var sp = f.World.Get<EnemySpawner>(se);
+            sp.ActiveCount = EnemyConfig.MaxTotalEnemies; // 50 满
+            f.World.Add(se, sp);
+            var clown = SpawnTestEnemy(f, EnemyKind.Clown, 5f, 0f, 5f);
+
+            f.CallBool(EnemyMod.DamageCap, clown, 999999, 7u, 0u); // 击杀 → 49
+            f.Tick(40); // 2s：召唤延迟 1s 已到点
+            // 49 + 召唤 1 只 = 50 封顶，其余召唤被丢弃（防御性资源上限，不超生成器全局并发）
+            Assert.Equal(1, AliveCountOf(f, EnemyKind.MiniClown));
+            Assert.Equal(EnemyConfig.MaxTotalEnemies, f.World.Get<EnemySpawner>(se).ActiveCount);
+            Assert.True(f.World.Get<EnemySpawner>(se).ActiveCount <= EnemyConfig.MaxTotalEnemies, "ActiveCount 不应超 50");
+        }
+
+        // ---- M3 辅助行为：敌人回血（EnemyRegen，序 7；原版仅 ZomBear/GiantZombear prefab 挂组件） ----
+
+        [Test]
+        public static void Aux_Regen_ZomBear_HealsCadence_CappedAtMax_DeadNoRegen()
+        {
+            var f = Fixture.Create();
+            var bear = SpawnTestEnemy(f, EnemyKind.ZomBear, 10f, 0f, 10f); // HP 200（契约 §9）
+            // 手动建敌人不带 EnemyRegen 组件（同测试前例）；此处按生成器产出路径补挂（BuildEnemyEntity 会挂）
+            f.World.Add(new Entity(bear), new EnemyRegen { Timer = EnemyConfig.Of(EnemyKind.ZomBear).RegenInterval });
+            f.CallBool(EnemyMod.DamageCap, bear, 100, 7u, 0u); // 200→100（未致死）
+            Assert.Equal(100, f.World.Get<EnemyHealth>(new Entity(bear)).Current);
+
+            f.Tick(20); // 1s：原版 EnemyRegen cooldown=0.1 → 1HP×10 = 110
+            var hp = f.World.Get<EnemyHealth>(new Entity(bear)).Current;
+            Assert.True(hp >= 109 && hp <= 111, $"ZomBear 回血节奏异常: {hp}");
+            Assert.True(hp <= EnemyConfig.Of(EnemyKind.ZomBear).Hp, "回血不应超过上限");
+
+            // 封顶：195 起回，越过 200 不超（原版 currentHealth += 1 无显式 clamp，靠每帧判 <startingHealth）
+            var eh = f.World.Get<EnemyHealth>(new Entity(bear));
+            eh.Current = 195;
+            f.World.Add(new Entity(bear), eh);
+            f.Tick(20); // 再 1s：+10 → 205 → 封顶 200
+            Assert.Equal(200, f.World.Get<EnemyHealth>(new Entity(bear)).Current);
+
+            // 尸体不回血：击杀后 hp 保持 0（原版 Regenerate 判 !isDead）
+            f.CallBool(EnemyMod.DamageCap, bear, 999999, 7u, 0u);
+            Assert.True(f.World.Get<EnemyFlags>(new Entity(bear)).IsDead);
+            f.Tick(20); // 1s（下沉中，2s 到点销毁）
+            Assert.True(f.World.Exists(new Entity(bear)), "下沉未到点不应销毁");
+            Assert.Equal(0, f.World.Get<EnemyHealth>(new Entity(bear)).Current); // 尸体无回血
+
+            // 非回血类型即使挂组件也不回（回血仅配置声明的类型——原版只 ZomBear 系 prefab 带 EnemyRegen）
+            var bunny = SpawnTestEnemy(f, EnemyKind.Zombunny, 10f, 0f, -10f);
+            f.World.Add(new Entity(bunny), new EnemyRegen { Timer = 0.1f });
+            f.CallBool(EnemyMod.DamageCap, bunny, 50, 7u, 0u); // 100→50
+            f.Tick(20);
+            Assert.Equal(50, f.World.Get<EnemyHealth>(new Entity(bunny)).Current); // 不回归（无回血属性）
+        }
+
+        [Test]
+        public static void Aux_Regen_GiantZomBear_FasterCadence()
+        {
+            var f = Fixture.Create();
+            var g = SpawnTestEnemy(f, EnemyKind.GiantZomBear, 15f, 0f, 15f); // HP 700（契约 §9）
+            f.World.Add(new Entity(g), new EnemyRegen { Timer = EnemyConfig.Of(EnemyKind.GiantZomBear).RegenInterval });
+            f.CallBool(EnemyMod.DamageCap, g, 100, 7u, 0u); // 700→600
+
+            f.Tick(20); // 1s：cooldown=0.05（prefab 序列化）→ 1HP×20 = 620
+            var hp = f.World.Get<EnemyHealth>(new Entity(g)).Current;
+            Assert.True(hp >= 619 && hp <= 621, $"GiantZomBear 回血节奏异常: {hp}");
+        }
+
         // ---- 契约测试向量（§14.11.3）：owner 规范字节 ↔ 样例一致 ----
 
         [Test]
@@ -649,7 +824,7 @@ namespace TestRunner
             Assert.True(f.World.Store<EnemyType>().Count > 0, "卸载前应有敌人");
             var spawnerId = EnemyMod.SpawnerEntityId;
             Assert.True(spawnerId != 0);
-            Assert.Equal(6, f.Host.Systems.CountOf(EnemyId));
+            Assert.Equal(7, f.Host.Systems.CountOf(EnemyId));
 
             f.Host.Manager.Unload(EnemyId);
 

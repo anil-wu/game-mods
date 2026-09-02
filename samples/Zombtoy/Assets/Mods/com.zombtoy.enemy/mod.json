@@ -1,6 +1,6 @@
 {
   "id": "com.zombtoy.enemy",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "entry": "Com.Zombtoy.Enemy.EnemyMod",
   "modules": {
     "shared": "com.zombtoy.enemy.dll"

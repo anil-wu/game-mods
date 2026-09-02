@@ -109,6 +109,29 @@ namespace Com.Zombtoy.Enemy
     }
 
     /// <summary>
+    /// 敌人回血（M3，原版 EnemyRegen.cs——仅"带回血属性"的类型在生成时挂本组件，
+    /// 原版 ZomBear/GiantZombear prefab 序列化 cooldown=0.1/0.05、regenAmount=1）。
+    /// Timer = 下次回血节拍倒计时（初始 = 类型 RegenInterval）：EnemyAuxSystem 每帧递减，到点 +RegenAmount
+    /// （EnemyConfig 按类型读），封顶 EnemyHealth.Max；IsDead 不结算（原版 Regenerate 判 !isDead）。
+    /// </summary>
+    public struct EnemyRegen : IComponent { public float Timer; }
+
+    /// <summary>
+    /// Clown 死亡延迟召唤 MiniClown（M3，原版 SpawnClown.cs：死亡后 Invoke("Spawn", 1f)）。
+    /// 挂死亡 Clown 实体（随尸体下沉/销毁取消，reset 清场一并清理）：Timer=召唤延迟；到点按两个槽位生成
+    /// （Clown.prefab 双 SpawnPoint，各 clownsSpawned=1、15% +1）——生成计入 ActiveCount 并发布
+    /// ZombieCountChanged（任务：计数纳入；生成器全局并发上限 50 满时不补位）。XA/XB 等为死亡瞬间冻结的出生 XZ。
+    /// </summary>
+    public struct EnemyPendingMiniClowns : IComponent
+    {
+        public float Timer;     // 召唤延迟（原版 1s）
+        public int PendingA;    // 槽位 A 待生成数（1 + 15% +1）
+        public float XA, ZA;    // 槽位 A 出生点
+        public int PendingB;    // 槽位 B 待生成数
+        public float XB, ZB;    // 槽位 B 出生点
+    }
+
+    /// <summary>
     /// Titan 地面锁定状态（契约 §3 序 5 EnemyBossSystem 专用，GroundTarget 类敌人懒建）。
     /// Tracking=射程内锁定中（视图 decal 显隐）；Charge=蓄力进度（≥ EnemyAttack.Interval 触发落点 AOE 并清零）；
     /// X/Z=准星（独立 decal）当前地面落点——向玩家 XZ 指数 lerp（原版 EnemyTargetShooting：Lerp(pos, player, dt*5)）。

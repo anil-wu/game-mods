@@ -3,7 +3,9 @@ namespace Com.Zombtoy.Enemy
     /// <summary>
     /// 敌人行为参数（契约 §9 配置常量表；结构固定、数值可调，改动需升 CONTRACT 版本与测试向量，summary §0.8）。
     /// 数值来源（只读机制数值，不搬代码）：原版 EnemyManager.cs（生成器加权表/每类型冷却/并发上限/间隔衰减）、
-    /// EnemyHealth.cs（生命/下沉 2f/计分）、EnemyMovement.cs（追击速度）、EnemyAttack.cs（接触伤害 0.5s 间隔）。
+    /// EnemyHealth.cs（生命/下沉 2f/计分）、EnemyMovement.cs（追击速度）、EnemyAttack.cs（接触伤害 0.5s 间隔）、
+    /// M3 辅助行为：SelfDestruct.cs + ZomDuckk.prefab 序列化（BlaseDamage=99）、SpawnClown.cs + Clown.prefab
+    /// （双 SpawnPoint/clownsSpawned）、EnemyRegen.cs + ZomBear/GiantZombear.prefab 序列化（cooldown×regenAmount）。
     /// 默认配置在资源迁移时按 prefab 校准（summary §0.8）。
     /// </summary>
     public static class EnemyConfig
@@ -48,6 +50,30 @@ namespace Com.Zombtoy.Enemy
         public const float ProjectileHeight = 1.2f;
 
         // ---- Titan 地面锁定（契约 §3 序 5，M2；数值对齐原版 EnemyTargetShooting / EnemyRocket Variant） ----
+        // ---- 敌人辅助行为（M3 任务补全；数值对齐原版 prefab 序列化与脚本，改动需升 CONTRACT 版本与测试向量） ----
+
+        /// <summary>
+        /// ZomDuck 死亡自爆（SelfDestruct/IBlast，原版 SelfDestruct.cs）：爆炸点 = 死亡点，外圈半径
+        /// OverlapSphere(transform.position, 3f)。原版内圈 DeadlyExplosionRadius=1f 的双层伤害循环被注释
+        /// （死代码未执行）→ 只复刻执行中的 3m 单圈。
+        /// </summary>
+        public const float ZomDuckBlastRadius = 3f;
+
+        /// <summary>ZomDuck 死亡自爆对玩家伤害（原版 ZomDuckk.prefab SelfDestruct.BlaseDamage=99）。</summary>
+        public const int ZomDuckBlastPlayerDamage = 99;
+
+        /// <summary>ZomDuck 死亡自爆对范围内其他敌人伤害（原版 BlaseDamage/6 = 99/6 = 16，int 整除）。</summary>
+        public const int ZomDuckBlastEnemyDamage = 16;
+
+        /// <summary>Clown 死亡召唤 MiniClown 延迟（原版 SpawnClown.cs：Invoke("Spawn", 1f)）。</summary>
+        public const float ClownMiniSpawnDelay = 1f;
+
+        /// <summary>召唤槽位偏移（原版 Clown.prefab 两个 SpawnPoint 子对象 local x ≈ ±0.8：-0.822/0.753，y 强制 0）。</summary>
+        public const float ClownMiniSpawnOffsetX = 0.8f;
+
+        /// <summary>每个槽位额外 +1 只的概率（原版 SpawnClown.Start：Random 0..100 ≤ 15 → clownsSpawned++）。</summary>
+        public const double ClownMiniSpawnExtraChance = 0.15;
+
         /// <summary>准星追踪 lerp 速率（原版 EnemyTargetShooting：Vector3.Lerp(groundTarget, player, Time.deltaTime*5)）。</summary>
         public const float BossLockLerpRate = 5f;
 
@@ -87,10 +113,15 @@ namespace Com.Zombtoy.Enemy
             public readonly int GroupMin;
             public readonly int GroupMax;
             public readonly float StartBufferTime;
+            // 回血（M3：原版 EnemyRegen.cs，仅带"回血属性"的类型挂组件——ZomBear/GiantZomBear prefab 序列化 cooldown/regenAmount）
+            public readonly bool HasRegen;
+            public readonly float RegenInterval;
+            public readonly int RegenAmount;
 
             public KindStats(EnemyKind kind, int hp, int score, float speed, AttackKind attack,
                 int damage, float range, float interval, bool blastImmunity,
-                int weight, float min, float max, int maxConcurrent, int groupMin, int groupMax, float buffer)
+                int weight, float min, float max, int maxConcurrent, int groupMin, int groupMax, float buffer,
+                bool hasRegen = false, float regenInterval = 0f, int regenAmount = 0)
             {
                 Kind = kind;
                 Hp = hp;
@@ -108,6 +139,9 @@ namespace Com.Zombtoy.Enemy
                 GroupMin = groupMin;
                 GroupMax = groupMax;
                 StartBufferTime = buffer;
+                HasRegen = hasRegen;
+                RegenInterval = regenInterval;
+                RegenAmount = regenAmount;
             }
         }
 
@@ -115,15 +149,16 @@ namespace Com.Zombtoy.Enemy
         public static readonly KindStats[] Table =
         {
             new(EnemyKind.Zombunny,       100, 100, 3.0f, AttackKind.Contact,     10, ContactRange, 0.5f, false, 20, 1.0f,  5.0f,  20, 1, 2,  0f),
-            new(EnemyKind.ZomBear,        200, 100, 2.5f, AttackKind.Contact,     15, ContactRange, 0.5f, false, 15, 1.5f,  6.0f,  15, 1, 1,  0f),
+            // ZomBear 系回血（M3）：原版 ZomBear/GiantZombear.prefab 挂 EnemyRegen（cooldown 0.1/0.05s × regenAmount 1，prefab 序列化）
+            new(EnemyKind.ZomBear,        200, 100, 2.5f, AttackKind.Contact,     15, ContactRange, 0.5f, false, 15, 1.5f,  6.0f,  15, 1, 1,  0f,  true, 0.1f,  1),
             new(EnemyKind.Hellephant,     300, 100, 2.0f, AttackKind.Contact,     20, ContactRange, 0.5f, false, 12, 2.0f,  7.0f,  10, 1, 1,  0f),
             new(EnemyKind.GiantZombunny,  500, 100, 2.2f, AttackKind.Contact,     25, ContactRange, 0.5f, false,  8, 2.5f,  8.0f,   6, 1, 1, 10f),
-            new(EnemyKind.GiantZomBear,   700, 100, 1.8f, AttackKind.Contact,     30, ContactRange, 0.5f, false,  6, 3.0f,  9.0f,   5, 1, 1, 20f),
+            new(EnemyKind.GiantZomBear,   700, 100, 1.8f, AttackKind.Contact,     30, ContactRange, 0.5f, false,  6, 3.0f,  9.0f,   5, 1, 1, 20f, true, 0.05f, 1),
             new(EnemyKind.GiantHellephant,900, 100, 1.5f, AttackKind.Contact,     35, ContactRange, 0.5f, false,  4, 3.5f, 10.0f,   4, 1, 1, 30f),
             new(EnemyKind.Titan,         2000, 500, 1.2f, AttackKind.GroundTarget, 60, 15f,         3.0f, true,  2, 5.0f, 12.0f,   1, 1, 1, 45f), // 首领：BlastImmunity + 地面锁定 AOE（契约 §3 序 5，M2）
             new(EnemyKind.Clown,          100, 100, 2.8f, AttackKind.Fireball,    40, 25f,         1.5f, false,  8, 2.0f,  7.0f,   4, 1, 1, 15f), // 远程（契约 §3 序 4，M2）
             new(EnemyKind.MiniClown,       20,  50, 4.0f, AttackKind.Contact,      5, ContactRange, 0.5f, false,  0, 1.0f,  4.0f,  10, 2, 3,  0f), // 由 Clown 生成（M2）
-            new(EnemyKind.ZomDuck,        100, 100, 4.5f, AttackKind.Contact,     10, ContactRange, 0.5f, false, 14, 1.0f,  5.0f,  12, 1, 2,  0f),
+            new(EnemyKind.ZomDuck,        100, 100, 4.5f, AttackKind.Contact,     10, ContactRange, 0.5f, false, 14, 1.0f,  5.0f,  12, 1, 2,  0f), // ZomDuck 系死亡自爆（M3：SelfDestruct/IBlast，见 ZomDuckBlast* 常量）
         };
 
         /// <summary>按类别取静态配置。</summary>

@@ -1,6 +1,7 @@
 # com.zombtoy.enemy 契约文档（Rule 19：契约 = 文档）
 
-> 定位：敌人——10 种类型 + 加权生成器 + 追击/接触伤害/远程（Clown 火球）/首领 Titan（地面锁定 AOE）+ 死亡计分。
+> 定位：敌人——10 种类型 + 加权生成器 + 追击/接触伤害/远程（Clown 火球）/首领 Titan（地面锁定 AOE）+ 死亡计分
+> + M3 辅助行为（ZomDuck 死亡自爆 SelfDestruct / Clown 死亡召唤 MiniClown SpawnClown / ZomBear 系回血 EnemyRegen）。
 > 单机 Host。线格式约定同 summary §0（ModCall=DataCodec 元组，Message=字段编号）。
 > 敌人实体由本 Mod 创建/销毁；**视图（EnemyView）挂 EntityId**，武器射线命中 collider → 取 EntityId → `enemy:damage`（§8）。
 
@@ -31,6 +32,8 @@ public struct EnemySpawner  : IComponent { public bool Enabled; public float Tim
 ```csharp
 public struct EnemyProjectile : IComponent { public byte Kind; public int Damage; public uint Source; public float Speed; public float Lifetime; public float X, Y, Z; public float DirX, DirY, DirZ; } // M2：Clown 火球逻辑投射物（直线无追踪）；Kind=EnemyProjectileKind（Fireball/Rocket）
 public struct EnemyBossLock  : IComponent { public bool Tracking; public float Charge; public float X, Z; }            // M2：Titan 地面锁定（准星落点 X/Z + 蓄力进度，仅本 Mod 视图读）
+public struct EnemyRegen     : IComponent { public float Timer; }                                                     // M3：回血节拍（仅带回血属性类型生成时挂；ZomBear/GiantZomBear）
+public struct EnemyPendingMiniClowns : IComponent { public float Timer; public int PendingA; public float XA, ZA; public int PendingB; public float XB, ZB; } // M3：Clown 死亡延迟召唤（原版双 SpawnPoint）
 ```
 
 ## 3. ECS 系统（职责 / 读写组件 / 更新顺序）
@@ -43,6 +46,7 @@ public struct EnemyBossLock  : IComponent { public bool Tracking; public float C
 | 4 | `EnemyRangedSystem` | Clown 火球：射程内冷却 → 生成 EnemyProjectile 逻辑实体（直线飞行、无追踪）+ 视图请求；命中玩家 → 调 `player:damage`；超时/命中销毁实体+视图 | EnemyAttack, EnemyPosition, EnemyFlags, EnemyProjectile | EnemyAttack.Cooldown | 调 `player:damage`（命中时） |
 | 5 | `EnemyBossSystem` | Titan：射程内准星（独立 decal，不复刻原版 groundTarget 绑地板 bug）向玩家 XZ lerp 追踪 + 蓄力（蓄力时长 = Interval）→ 落点 AOE（半径 3.0）调 `player:damage`；玩家跑出 AOE 圈可躲 | EnemyFlags, EnemyPosition, EnemyBossLock | EnemyBossLock | 调 `player:damage` |
 | 6 | `EnemyHealthSystem` | 死亡后置：IsSinking 下沉计时 → 到点销毁实体 + 通知视图销毁（视图下沉由 EnemyView 动画处理）；IsDead 后每帧确认不再追击 | EnemyFlags, EnemyHealth | EnemyFlags | 通知视图（静态桥） |
+| 7 | `EnemyAuxSystem`（M3） | 辅助行为计时：①回血（EnemyRegen 倒计时到点 +RegenAmount，封顶 Max、尸体不回——原版 EnemyRegen.cs）；②Clown 死亡延迟召唤（EnemyPendingMiniClowns 到点按双槽位生成 MiniClown，生成即计入 ActiveCount + 发 ZombieCountChanged；全局并发上限 50 满不补位——原版 SpawnClown.cs） | EnemyRegen, EnemyPendingMiniClowns, EnemyHealth, EnemyFlags | EnemyHealth, EnemySpawner | 发 ZombieCountChanged |
 
 **扣血在 `enemy:damage` 能力实现内同步执行**（返回 killed 需要当场结果）：扣血 → 若死：置 IsDead/IsSinking、发 `enemy:EnemyKilled`、`enemy:ZombieCountChanged`（-1）、通知视图播放死亡；返回 `[true]`。
 
@@ -125,15 +129,15 @@ public struct EnemyBossLock  : IComponent { public bool Tracking; public float C
 | kind | HP | ScoreValue | Speed | 攻击 | 备注 |
 |---|---|---|---|---|---|
 | Zombunny | 100 | 100 | 3.0 | 接触 10 / 0.5s | |
-| ZomBear | 200 | 100 | 2.5 | 接触 15 / 0.5s | |
+| ZomBear | 200 | 100 | 2.5 | 接触 15 / 0.5s | 回血 +1/0.1s（原版 EnemyRegen.cs，prefab 序列化） |
 | Hellephant | 300 | 100 | 2.0 | 接触 20 / 0.5s | |
 | GiantZombunny | 500 | 100 | 2.2 | 接触 25 / 0.5s | |
-| GiantZomBear | 700 | 100 | 1.8 | 接触 30 / 0.5s | |
+| GiantZomBear | 700 | 100 | 1.8 | 接触 30 / 0.5s | 回血 +1/0.05s（原版 EnemyRegen.cs） |
 | GiantHellephant | 900 | 100 | 1.5 | 接触 35 / 0.5s | |
 | Titan | 2000 | 500 | 1.2 | 地面锁定 AOE | 首领；BlastImmunity=true |
 | Clown | 100 | 100 | 2.8 | 火球 40，射程 25 | 远程 |
-| MiniClown | 20 | 50 | 4.0 | 接触 5 | 由 Clown 生成（M2） |
-| ZomDuck | 100 | 100 | 4.5 | 接触 10 | 快速 |
+| MiniClown | 20 | 50 | 4.0 | 接触 5 | 由 Clown 死亡召唤（M3，双 SpawnPoint 槽各 1~2 只） |
+| ZomDuck | 100 | 100 | 4.5 | 接触 10 | 快速；死亡自爆 99@3m（M3，原版 SelfDestruct BlaseDamage=99/半径 3） |
 
 **生成器**：baseSpawnTime=3.0s、spawnTimeReduction=×0.99/次、minSpawnTime=0.6s、maxTotalEnemies=50；每类型 weight/minSpawnTime/maxSpawnTime/maxConcurrent/groupSize/startBufferTime 在 `data/enemy_spawn_table`（或 config 常量）中，结构固定、数值可调。
 

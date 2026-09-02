@@ -9,7 +9,8 @@ namespace Com.Zombtoy.Enemy
     /// 敌人周期系统（契约 §3，全部 SystemSide.Server：Host 单机 = 全逻辑端，无头测试用 UpdateAll）。
     /// 扣血不走系统：enemy:damage 在能力实现内同步执行并当场发消息（契约 §0.5/§4）；
     /// 系统只做周期行为（生成/追击/接触伤害/远程火球/首领锁定/下沉清理）。
-    /// 更新顺序（按注册序）：Spawn → Chase → Attack(接触) → Ranged(Clown 火球+投射物) → Boss(Titan 地面锁定) → Health(死亡清理)。
+    /// 更新顺序（按注册序）：Spawn → Chase → Attack(接触) → Ranged(Clown 火球+投射物) → Boss(Titan 地面锁定)
+    /// → Health(死亡清理) → Aux(M3：回血/Clown 延迟召唤，序 7)。
     /// </summary>
 
     /// <summary>
@@ -176,27 +177,11 @@ namespace Com.Zombtoy.Enemy
             return n;
         }
 
-        /// <summary>生成一个敌人实体（归属本 ModObject，卸载强制回收 §9.2）+ 视图静态桥通知（契约 §8）。</summary>
+        /// <summary>生成一个敌人实体：复用 EnemyMod.BuildEnemyEntity（生成器/辅助召唤共用，任务：复用生成器逻辑/实体）。
+        /// 视图静态桥通知含在其内（宿主 EnemySpawnerView 实例化 prefab 并绑定 EntityId，契约 §8）；
+        /// 计数由调用方（生成器批次 / EnemyAuxSystem 召唤）自行维护，本方法不发布消息。</summary>
         private void SpawnEnemy(SystemContext ctx, EnemyKind kind, float x, float y, float z)
-        {
-            var st = EnemyConfig.Of(kind);
-            var e = _context.Ecs.CreateEntity();
-            ctx.World.Add(e, new EnemyType { Kind = (byte)kind });
-            ctx.World.Add(e, new EnemyHealth { Current = st.Hp, Max = st.Hp, ScoreValue = st.ScoreValue });
-            ctx.World.Add(e, new EnemyFlags { BlastImmunity = st.BlastImmunity });
-            ctx.World.Add(e, new EnemyAttack
-            {
-                Kind = (byte)st.Attack,
-                Damage = st.AttackDamage,
-                Range = st.AttackRange,
-                Interval = st.AttackInterval,
-                Cooldown = 0f,
-            });
-            ctx.World.Add(e, new EnemyMovement { Speed = st.Speed, SpeedMul = 1f, EffectTimer = 0f });
-            ctx.World.Add(e, new EnemyTarget { PlayerEntityId = EnemyMod.PlayerEntityId });
-            ctx.World.Add(e, new EnemyPosition { X = x, Y = y, Z = z });
-            EnemyMod.NotifyEnemySpawned(e.Id); // 宿主 EnemySpawnerView 实例化 prefab 并绑定 EntityId
-        }
+            => EnemyMod.BuildEnemyEntity(kind, x, y, z);
     }
 
     /// <summary>
@@ -484,6 +469,109 @@ namespace Com.Zombtoy.Enemy
                 }
                 ctx.World.Add(e, f);
             }
+        }
+    }
+
+    /// <summary>
+    /// 敌人辅助行为（序 7，M3 任务追加；挂在 Health 之后）。两类计时行为：
+    /// 1) 回血（原版 EnemyRegen.cs，ZomBear/GiantZombear prefab 挂组件）：EnemyRegen 倒计时到点
+    ///    → 按类型 +RegenAmount（ZomBear 0.1s/1、GiantZomBear 0.05s/1），封顶 EnemyHealth.Max、
+    ///    IsDead 不结算（原版 Regenerate：currentHealth &lt; startingHealth &amp;&amp; !isDead）；
+    /// 2) Clown 死亡延迟召唤 MiniClown（原版 SpawnClown.cs Invoke("Spawn",1f)）：死亡 Clown 上的
+    ///    EnemyPendingMiniClowns 倒计时到点 → 按槽位生成（EnemyMod.BuildEnemyEntity 共用生成器产出路径），
+    ///    每生成一只 ActiveCount+1 并发 ZombieCountChanged（任务：计数纳入）；全局并发上限 50 满时丢弃
+    ///    本次剩余召唤（防御性资源上限；原版无并发概念，本 Mod 生成器上限语义同上限一致）。
+    /// 死亡触发（ZomDuck 自爆/Clown 挂待召唤组件）在 enemy:damage 致死分支同步完成（契约 §0.5），本系统只做计时结算。
+    /// </summary>
+    public sealed class EnemyAuxSystem : ISystem
+    {
+        private readonly IModContext _context;
+
+        public EnemyAuxSystem(IModContext context) => _context = context;
+
+        public void Update(SystemContext ctx)
+        {
+            TickRegen(ctx);
+            TickPendingMiniClowns(ctx);
+        }
+
+        /// <summary>回血计时：EnemyRegen 组件存在才结算（原版只有带组件的类型回血）。</summary>
+        private static void TickRegen(SystemContext ctx)
+        {
+            foreach (var (e, regen, hp, flags, type) in ctx.Query<EnemyRegen, EnemyHealth, EnemyFlags, EnemyType>())
+            {
+                if (flags.IsDead) continue;
+                var cfg = EnemyConfig.Of((EnemyKind)type.Kind);
+                if (!cfg.HasRegen || hp.Current >= hp.Max) continue; // 满血不回（原版 currentHealth < startingHealth 门）
+
+                var r = regen;
+                r.Timer -= ctx.DeltaTime;
+                var heal = 0;
+                var guarded = 0;
+                while (r.Timer <= 0f && hp.Current + heal < hp.Max && guarded++ < 64)
+                {
+                    heal += cfg.RegenAmount;
+                    r.Timer += cfg.RegenInterval;
+                    if (cfg.RegenInterval <= 0f) break; // 防御（配置错误：不死循环）
+                }
+                if (heal > 0)
+                {
+                    var h = hp;
+                    h.Current = Math.Min(hp.Max, hp.Current + heal);
+                    ctx.World.Add(e, h);
+                }
+                ctx.World.Add(e, r);
+            }
+        }
+
+        /// <summary>Clown 死亡召唤计时：到点按槽位生成 MiniClown（快照迭代，先摘组件再生成）。</summary>
+        private void TickPendingMiniClowns(SystemContext ctx)
+        {
+            foreach (var (e, pending) in ctx.Query<EnemyPendingMiniClowns>())
+            {
+                var p = pending;
+                p.Timer -= ctx.DeltaTime;
+                if (p.Timer > 0f)
+                {
+                    ctx.World.Add(e, p);
+                    continue;
+                }
+
+                ctx.World.Remove<EnemyPendingMiniClowns>(e); // 先摘：到点即结算一次（防跨帧重复）
+                var spawned = 0;
+                spawned += SpawnSlot(ctx, p.PendingA, p.XA, p.ZA);
+                spawned += SpawnSlot(ctx, p.PendingB, p.XB, p.ZB);
+                if (spawned > 0) PublishAuxSpawnCount(ctx); // 批量生成后统一计数发布（一次消息，契约 §5）
+            }
+        }
+
+        /// <summary>单槽位生成（全局并发上限 50 门控；返回本槽实际生成数）。</summary>
+        private static int SpawnSlot(SystemContext ctx, int pending, float x, float z)
+        {
+            if (pending <= 0) return 0;
+            var se = new Entity(EnemyMod.SpawnerEntityId);
+            if (!ctx.World.TryGet<EnemySpawner>(se, out var sp)) return 0;
+
+            var spawned = 0;
+            for (var i = 0; i < pending; i++)
+            {
+                if (sp.ActiveCount + spawned >= EnemyConfig.MaxTotalEnemies) break; // 并发满：丢弃剩余（防御上限）
+                EnemyMod.BuildEnemyEntity(EnemyKind.MiniClown, x, 0f, z); // 原版出生 y 强制 0（ClownSpawnPoint.y=0）
+                spawned++;
+            }
+            if (spawned == 0) return 0;
+
+            sp.ActiveCount += spawned;
+            ctx.World.Add(se, sp);
+            return spawned;
+        }
+
+        /// <summary>本次召唤完成后发布一次 ZombieCountChanged（计数纳入，契约 §5；生成即计数，同生成器口径）。</summary>
+        private static void PublishAuxSpawnCount(SystemContext ctx)
+        {
+            var se = new Entity(EnemyMod.SpawnerEntityId);
+            if (!ctx.World.TryGet<EnemySpawner>(se, out var sp)) return;
+            EnemyMod.PublishZombieCount(sp.ActiveCount);
         }
     }
 }
