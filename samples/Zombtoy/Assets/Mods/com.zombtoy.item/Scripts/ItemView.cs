@@ -32,6 +32,7 @@ namespace Com.Zombtoy.Item
         {
             _collider = GetComponent<Collider>();
             _audio = GetComponent<AudioSource>();
+            if (_audio == null) _audio = gameObject.AddComponent<AudioSource>(); // 自建拾取音效
         }
 
         private void OnEnable() => ItemMod.OnItemPicked += HandlePicked;
@@ -41,7 +42,7 @@ namespace Com.Zombtoy.Item
         {
             if (entityId != EntityId) return;
             if (_collider is not null) _collider.enabled = false; // 拾取后禁用 Collider（契约 §8，防重复触发）
-            if (_audio is not null) _audio.Play();                // 拾取音效（契约 §8）
+            if (_audio != null) _audio.Play();                // 拾取音效（契约 §8）
         }
 
         private void Update()

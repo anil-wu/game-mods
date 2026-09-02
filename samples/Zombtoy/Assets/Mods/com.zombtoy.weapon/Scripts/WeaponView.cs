@@ -53,6 +53,7 @@ namespace Com.Zombtoy.Weapon
             if (_shootableMask == 0) _shootableMask = ~0; // 工程未配置 Shootable 层（防御）：命中任意层
             _camera = GetComponentInChildren<Camera>() ?? Camera.main;
             _gunParticles = GetComponent<ParticleSystem>();
+            if (_gunParticles == null) _gunParticles = gameObject.AddComponent<ParticleSystem>(); // 自建枪口粒子（不依赖 prefab）
             // 注意：GetComponent 对内置组件可能返回 fake-null（is null/?? 不识别），必须用 Unity == null 判断
             _gunLine = GetComponent<LineRenderer>();
             if (_gunLine == null) _gunLine = gameObject.AddComponent<LineRenderer>(); // 自建弹道线（不依赖 prefab）
@@ -61,6 +62,7 @@ namespace Com.Zombtoy.Weapon
             if (_gunLight == null) _gunLight = gameObject.AddComponent<Light>();       // 自建枪口光（不依赖 prefab）
             ConfigureLight();
             _gunAudio = GetComponent<AudioSource>();
+            if (_gunAudio == null) _gunAudio = gameObject.AddComponent<AudioSource>(); // 自建枪声（不依赖 prefab）
         }
 
         /// <summary>弹道线配置（LineRenderer：2 点折线 + 黄色细线，原版 PlayerShooting 表现形态）。</summary>
@@ -204,13 +206,13 @@ namespace Com.Zombtoy.Weapon
                 _gunLine.SetPosition(0, origin);
                 _gunLine.SetPosition(1, hitPoint);
             }
-            if (_gunParticles is not null) { _gunParticles.Stop(); _gunParticles.Play(); }
+            if (_gunParticles != null) { _gunParticles.Stop(); _gunParticles.Play(); }
             if (_gunLight is not null)
             {
                 _gunLight.transform.position = origin; // 枪口位置（玩家前方射线原点）
                 _gunLight.enabled = true;
             }
-            if (_gunAudio is not null) _gunAudio.Play();
+            if (_gunAudio != null) _gunAudio.Play();
         }
 
         private void WriteSwitch(byte index)
