@@ -14,7 +14,9 @@ namespace Com.Zombtoy.Weapon
     ///   ReloadSystem 计时补弹，无耦合）
     /// - 1-4 键 → 静态桥写 SwitchRequest（WeaponSwitchSystem 校验/发布）
     /// - Fire2 → 静态桥写 TornadoRequest（副手，ProjectileSystem 生成 Tornado，M2，契约 §8）
-    /// - 表现：LineRenderer 弹道线、枪口粒子/枪光、4 槽切换 UI（GunText）、HUD 弹药（AmmoChanged/WeaponSwitched 订阅）
+    /// - 表现：原枪 prefab 自带特效组件（复刻宪法 §0：对齐原版 PlayerShooting 在枪 GO 上
+    ///   GetComponent<ParticleSystem/LineRenderer/Light/AudioSource> 并直接用），
+    ///   Fire() 驱动它们播放/划线/点亮；4 槽切换 UI（GunText）、HUD 弹药（AmmoChanged/WeaponSwitched 订阅）
     /// 权威判定全部在系统内（FireSystem/ProjectileSystem），本视图只写输入与表现。
     /// </summary>
     public sealed class WeaponView : MonoBehaviour
@@ -41,7 +43,8 @@ namespace Com.Zombtoy.Weapon
             new(WeaponMod.ModIdValue, "Guns/MultiShot"),
         };
 
-        // 原枪口粒子材质 + 贴图（贴图不丢失；Rule 3。注意：.meta GUID 会被 Unity 重导覆盖，必须按名重链贴图）
+        // 原枪口粒子材质 + 贴图（仅防御性回退：原枪 prefab 自带粒子材质确实断链/丢贴图时才按名重链，Rule 3。
+        // 注意：.meta GUID 会被 Unity 重导覆盖，AssetId 必须带扩展名 + mat.SetTexture 按名重链）
         private static readonly AssetId MuzzleFlashMat = new(WeaponMod.ModIdValue,
             "Imported/EffectTexturesAndPrefabs/Materials/MuzzleFlash.mat");
         private static readonly AssetId MuzzleFlashTex = new(WeaponMod.ModIdValue,
@@ -58,72 +61,61 @@ namespace Com.Zombtoy.Weapon
             _shootableMask = LayerMask.GetMask("Shootable");
             if (_shootableMask == 0) _shootableMask = ~0; // 工程未配置 Shootable 层（防御）：命中任意层
             _camera = GetComponentInChildren<Camera>() ?? Camera.main;
-            _gunParticles = GetComponent<ParticleSystem>();
-            if (_gunParticles == null) _gunParticles = gameObject.AddComponent<ParticleSystem>(); // 自建枪口粒子（不依赖 prefab）
-            ApplyMuzzleFlashMaterial(); // 应用原枪口粒子材质（否则默认粒子无贴图）
-            // 注意：GetComponent 对内置组件可能返回 fake-null（is null/?? 不识别），必须用 Unity == null 判断
-            _gunLine = GetComponent<LineRenderer>();
-            if (_gunLine == null) _gunLine = gameObject.AddComponent<LineRenderer>(); // 自建弹道线（不依赖 prefab）
-            ConfigureLine();
-            _gunLight = GetComponent<Light>();
-            if (_gunLight == null) _gunLight = gameObject.AddComponent<Light>();       // 自建枪口光（不依赖 prefab）
-            ConfigureLight();
-            _gunAudio = GetComponent<AudioSource>();
-            if (_gunAudio == null) _gunAudio = gameObject.AddComponent<AudioSource>(); // 自建枪声（不依赖 prefab）
+            // 不再自建 LineRenderer/Light/ParticleSystem/AudioSource（复刻宪法 §0：禁自建近似物）——
+            // 特效组件在 ShowWeapon 实例化原枪 prefab 后 GetComponent 绑定（BindWeaponEffects，原版 PlayerShooting 用法）
         }
 
-        /// <summary>弹道线配置（LineRenderer：2 点折线 + 黄色细线，原版 PlayerShooting 表现形态）。</summary>
-        private void ConfigureLine()
+        /// <summary>
+        /// 从 _heldWeapon（原枪 prefab 实例）取它自带的特效组件（对齐原版 PlayerShooting.Awake
+        /// 在枪 GO 上 GetComponent&lt;ParticleSystem/LineRenderer/Light/AudioSource&gt;）。
+        /// Machine Gun / Shotgun 1 特效在根 GO；MultiShot（Cryo 占位枪）特效在枪管子树，
+        /// 故用 GetComponentInChildren（自含子树，前三个槽行为与 GetComponent 一致，Rule 13 无跨边界）。
+        /// 每次换枪重新绑定（特效随枪实例走）；枪模确缺/该槽枪无某组件时为 null，Fire 里按 Unity == null 跳过。
+        /// </summary>
+        private void BindWeaponEffects(int slot)
         {
-            if (_gunLine == null) return;
-            _gunLine.positionCount = 2;
-            _gunLine.startWidth = 0.03f;
-            _gunLine.endWidth = 0.03f;
-            _gunLine.startColor = new Color(1f, 0.95f, 0.4f);
-            _gunLine.endColor = new Color(1f, 0.7f, 0.2f);
-            _gunLine.numCapVertices = 4;
-            _gunLine.material = StandardMaterial(new Color(1f, 0.9f, 0.4f));
-            _gunLine.enabled = false;
+            if (_heldWeapon == null) return;
+            // 注意：GetComponent(InChildren) 对内置组件可能返回 fake-null（is null/?? 不识别），必须用 Unity == null 判断
+            _gunParticles = _heldWeapon.GetComponentInChildren<ParticleSystem>();
+            _gunLine = _heldWeapon.GetComponentInChildren<LineRenderer>();
+            _gunLight = _heldWeapon.GetComponentInChildren<Light>();
+            _gunAudio = _heldWeapon.GetComponentInChildren<AudioSource>();
+            Debug.Log($"[WeaponView] 特效组件来自原枪 prefab slot={slot}: " +
+                      $"ParticleSystem={_gunParticles != null} LineRenderer={_gunLine != null} " +
+                      $"Light={_gunLight != null} AudioSource={_gunAudio != null}");
+            // 枪口粒子材质断链防御（仅原材质确实丢失时按名回退；完好则不干预）
+            RelinkMuzzleMaterialIfBroken();
         }
 
-        /// <summary>枪口光配置（Point 点光，橙色枪口闪光，开火时短暂点亮）。</summary>
-        private void ConfigureLight()
+        /// <summary>
+        /// 原枪 prefab 枪口粒子材质/贴图按名重链（复刻宪法允许的原版资源缺失回退，日志声明）。
+        /// 粒子渲染材质完好（mainTexture 非空）时不干预；缺失/断链时经 context.Resources.Load
+        /// 按名取原 MuzzleFlash 材质与贴图（AssetId 带扩展名精确命中，Rule 3）并 SetTexture 补链。
+        /// </summary>
+        private void RelinkMuzzleMaterialIfBroken()
         {
-            if (_gunLight == null) return;
-            _gunLight.type = LightType.Point;
-            _gunLight.range = 8f;
-            _gunLight.intensity = 1.6f;
-            _gunLight.color = new Color(1f, 0.75f, 0.35f);
-            _gunLight.enabled = false;
-        }
-
-        private static Material StandardMaterial(Color color)
-        {
-            var shader = Shader.Find("Standard");
-            var mat = shader != null ? new Material(shader) : new Material(Shader.Find("Diffuse"));
-            mat.color = color;
-            return mat;
-        }
-
-        /// <summary>给枪口粒子应用原 MuzzleFlash 材质并按名重链贴图（.meta GUID 会被 Unity 重导覆盖，绕过 GUID 断链）。</summary>
-        private void ApplyMuzzleFlashMaterial()
-        {
-            if (_gunParticles == null) return;
-            var psr = _gunParticles.GetComponent<ParticleSystemRenderer>();
+            if (_heldWeapon == null || _gunParticles == null) return;
+            var psr = _heldWeapon.GetComponentInChildren<ParticleSystemRenderer>();
             if (psr == null) return;
-            Material? mat = null;
+            var mat = psr.sharedMaterial;
+            if (mat != null && mat.mainTexture != null) return; // 原枪自带粒子材质/贴图完好
+
+            Material? fallback = null;
             Texture? tex = null;
             try
             {
-                mat = WeaponMod.Context?.Resources.Load(MuzzleFlashMat) as Material;
+                fallback = WeaponMod.Context?.Resources.Load(MuzzleFlashMat) as Material;
                 tex = WeaponMod.Context?.Resources.Load(MuzzleFlashTex) as Texture;
             }
-            catch (System.Exception) { mat = null; tex = null; }
-            if (mat == null)
-                mat = new Material(Shader.Find("Particles/Additive") ?? Shader.Find("Particles/Standard Unlit") ?? Shader.Find("Sprites/Default"));
-            if (tex != null) { mat.SetTexture("_MainTex", tex); Debug.Log("[WeaponView] 枪口粒子贴图已按名重链 " + MuzzleFlashTex); }
-            else Debug.LogWarning("[WeaponView] 枪口粒子贴图未加载（按名失败）");
-            psr.sharedMaterial = mat;
+            catch (System.Exception) { fallback = null; tex = null; }
+            if (fallback == null)
+            {
+                Debug.LogWarning("[WeaponView] 原枪粒子材质缺失且按名回退失败 → 保持原样（该槽枪口粒子可能不显示）");
+                return;
+            }
+            if (tex != null) { fallback.SetTexture("_MainTex", tex); Debug.Log("[WeaponView] 枪口粒子贴图已按名重链 " + MuzzleFlashTex); }
+            psr.sharedMaterial = fallback;
+            Debug.LogWarning($"[WeaponView] 原枪粒子材质断链 → 按名回退 {MuzzleFlashMat}（原版资源缺失回退，日志声明）");
         }
 
         private void Start()
@@ -185,8 +177,9 @@ namespace Com.Zombtoy.Weapon
             _effectsTimer -= Time.deltaTime;
             if (_effectsTimer <= 0f)
             {
-                if (_gunLine is not null) _gunLine.enabled = false;
-                if (_gunLight is not null) _gunLight.enabled = false;
+                // Unity == null 语义（组件可能随旧枪实例销毁成 fake-null）
+                if (_gunLine != null) _gunLine.enabled = false;
+                if (_gunLight != null) _gunLight.enabled = false;
             }
         }
 
@@ -226,16 +219,17 @@ namespace Com.Zombtoy.Weapon
                 Kind = (byte)def.Kind,
             });
 
-            // 表现：弹道线 / 枪口粒子 / 枪光 / 音效（原版 PlayerShooting 表现）
+            // 表现：弹道线 / 枪口粒子 / 枪光 / 音效——此时组件来自原枪 prefab 实例（BindWeaponEffects），
+            // 调用形态对齐原版 PlayerShooting.Shoot（Stop/Play/SetPosition/enabled），缺组件按 Unity == null 跳过
             _effectsTimer = 0.2f;
-            if (_gunLine is not null)
+            if (_gunLine != null)
             {
                 _gunLine.enabled = true;
                 _gunLine.SetPosition(0, origin);
                 _gunLine.SetPosition(1, hitPoint);
             }
             if (_gunParticles != null) { _gunParticles.Stop(); _gunParticles.Play(); }
-            if (_gunLight is not null)
+            if (_gunLight != null)
             {
                 _gunLight.transform.position = origin; // 枪口位置（玩家前方射线原点）
                 _gunLight.enabled = true;
@@ -282,6 +276,12 @@ namespace Com.Zombtoy.Weapon
         private void ShowWeapon(int index)
         {
             if (_heldWeapon is not null) Destroy(_heldWeapon);
+            // 解绑旧实例特效（旧枪已销毁，置空避免 fake-null 引用；新枪实例化后重新绑定）
+            _heldWeapon = null;
+            _gunParticles = null;
+            _gunLine = null;
+            _gunLight = null;
+            _gunAudio = null;
             if (index < 0 || index >= WeaponPrefabs.Length) return;
             var gun = WeaponPrefabs[index] != null ? WeaponPrefabs[index] : LoadGun(index);
             if (gun is null) return; // 原枪模缺失：不显示（不影响权威逻辑）
@@ -291,6 +291,7 @@ namespace Com.Zombtoy.Weapon
                 _heldWeapon.transform.SetParent(_camera.transform, false);
                 _heldWeapon.transform.localPosition = new Vector3(0.25f, -0.2f, 0.5f);
             }
+            BindWeaponEffects(index); // 从原枪 prefab 实例取自带特效组件（复刻宪法：不用自建近似物）
         }
 
         /// <summary>经 context.Resources.Load 加载原枪模 prefab（Rule 3；失败返回 null，调用方不显示）。</summary>
