@@ -44,14 +44,24 @@ namespace Game.Runtime
         /// 兜底：按文件名 stem 匹配。Unity 打包时带空格的资源名会在空格处截断
         /// （如 "Sci-fi_character_unity_blue Variant.prefab" → "…blue"），
         /// 精确名匹配失败时用双向前缀模糊匹配（兼容截断/大小写/空格差异）。
+        /// 注意：前缀匹配必须放在精确匹配之后——否则 "Zombunny" 会先命中 "Zombunny death.wav"
+        /// 等前缀同名资产（返回非目标类型，视图 as GameObject 失败）。
         /// </summary>
         private static UnityEngine.Object? LoadByStem(AssetBundle bundle, string localPath)
         {
             var stem = Path.GetFileNameWithoutExtension(localPath).ToLowerInvariant();
+            // 1) 先精确匹配（nstem == stem），排除前缀同名资产（如 death.wav）干扰
             foreach (var n in bundle.GetAllAssetNames())
             {
                 var nstem = Path.GetFileNameWithoutExtension(n).ToLowerInvariant();
-                if (nstem == stem || nstem.StartsWith(stem) || stem.StartsWith(nstem))
+                if (nstem == stem)
+                    return bundle.LoadAsset(n);
+            }
+            // 2) 双向前缀模糊匹配（截断/大小写/空格差异兜底）
+            foreach (var n in bundle.GetAllAssetNames())
+            {
+                var nstem = Path.GetFileNameWithoutExtension(n).ToLowerInvariant();
+                if (nstem.StartsWith(stem) || stem.StartsWith(nstem))
                     return bundle.LoadAsset(n);
             }
             return null;

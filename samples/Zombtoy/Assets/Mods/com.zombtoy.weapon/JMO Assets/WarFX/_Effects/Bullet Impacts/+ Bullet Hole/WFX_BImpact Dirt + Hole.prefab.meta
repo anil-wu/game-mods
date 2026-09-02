@@ -1,7 +1,8 @@
 fileFormatVersion: 2
-guid: 1dadd8f4fe9e63949a3f8b23e0a25b67
-PrefabImporter:
-  externalObjects: {}
-  userData: 
-  assetBundleName: 
-  assetBundleVariant: 
+guid: 2f9348d6583cde14eb0d82bb9732647e
+labels:
+- warfx
+- particles
+- desktop
+- bullet impact
+- bullet hole

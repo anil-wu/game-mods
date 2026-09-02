@@ -1,7 +1,10 @@
 fileFormatVersion: 2
-guid: 3231e66230662d04cbb12937cdfb85f2
-PrefabImporter:
-  externalObjects: {}
+guid: 33b898f6e665b9f47bd6af4d580d3c9e
+labels:
+- CartoonFX
+- Toon
+- Particles
+- Magic
+- Aura
+NativeFormatImporter:
   userData: 
-  assetBundleName: 
-  assetBundleVariant: 

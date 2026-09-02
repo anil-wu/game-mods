@@ -1,7 +1,7 @@
 fileFormatVersion: 2
-guid: 5303f0e3aa522864c832957a614807ba
-PrefabImporter:
-  externalObjects: {}
-  userData: 
-  assetBundleName: 
-  assetBundleVariant: 
+guid: 4ecfa3d3919108f4fbff80d1c4d920a1
+labels:
+- smoke
+- warfx
+- particles
+- desktop

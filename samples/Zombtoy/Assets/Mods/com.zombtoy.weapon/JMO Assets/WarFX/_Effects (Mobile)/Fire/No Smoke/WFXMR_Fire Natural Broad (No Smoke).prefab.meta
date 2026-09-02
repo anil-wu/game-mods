@@ -1,7 +1,7 @@
 fileFormatVersion: 2
-guid: 38e3dbdcd7f814f479ceee8a68ed7228
-PrefabImporter:
-  externalObjects: {}
-  userData: 
-  assetBundleName: 
-  assetBundleVariant: 
+guid: 34fd02ac9d79ecc48959596089be08ca
+labels:
+- warfx
+- mobile
+- particles
+- fire

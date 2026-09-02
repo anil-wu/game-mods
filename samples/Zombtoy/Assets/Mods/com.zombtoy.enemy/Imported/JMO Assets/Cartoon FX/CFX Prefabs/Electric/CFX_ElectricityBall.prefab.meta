@@ -1,7 +1,9 @@
 fileFormatVersion: 2
-guid: fc5a59e83d546aa42ba359e5d351ce6e
-PrefabImporter:
-  externalObjects: {}
-  userData: 
-  assetBundleName: 
-  assetBundleVariant: 
+guid: fdb9314c720d0b947af7fa2fc5c85917
+labels:
+- ball
+- bubble
+- cartoonfx
+- electric
+- particles
+- toon

@@ -8,17 +8,19 @@ namespace Com.Zombtoy.Game
     /// <summary>
     /// 相位视图（MonoBehaviour 表现层，不参与无头测试，CONTRACT.md §8）：
     /// - 按相位展示：Menu/Result 相位隐藏 Level 环境；Playing/Paused/GameOver 相位展示（契约 §8 备注）。
-    /// - 视觉自建（任务：视图自建视觉，不依赖 prefab）：PrimitiveType 图元 + 内置 Standard 材质——
-    ///   蓝灰地板（Cube，layer=Floor 供玩家鼠标转身射线）+ 四周围墙（Cube）。
+    /// - 视觉：优先加载**原游戏资源**（Rule 3：经本 Mod context.Resources.Load，不 Resources.Load/AssetDatabase）——
+    ///   Prefabs/Environment.prefab 原 Level1 环境；加载失败回退程序化地板+四周围墙（保持可玩不崩溃）。
+    /// - 鼠标转身射线（契约 §8）：原环境 Floor 无 collider（仅动画），加载后补一块不可见 Floor 层命中面；
+    ///   并把名为 Floor 的对象子树切到 Floor 层（工程未配置该层时保持默认层，PlayerView 回退任意层）。
     /// - 光照：方向光由宿主引导提供（AGENTS.md §8：EnsureUrpMainCamera 建主相机 + 方向光），本视图不重复创建。
     /// - 相机：等距俯视视角（Camera.main 放玩家后上方看向中心；PlayerView 每帧接管跟随，本视图仅首次构建兜底摆位）。
     /// - 天空盒：尝试加载 AllSkyFree 材质（失败回退 Unity 默认，不阻塞游戏）。
-    /// - 资源 prefab GUID 断链未修（材质缺失渲染全灰），环境一律程序化自建（任务：视图自建视觉，不依赖 prefab）。
     /// - 逻辑出生点由 enemy/item Mod 自持（契约 §8：Level 内 EnemySpawnPoints/ItemSpawnPoints 仅供视觉参考）。
     /// </summary>
     public sealed class GameView : MonoBehaviour
     {
         private static readonly AssetId SkyboxDay = new(GameMod.ModIdValue, "AllSkyFree/Cartoon Base BlueSky/Day_BlueSky_Nothing");
+        private static readonly AssetId EnvironmentPrefab = new(GameMod.ModIdValue, "Prefabs/Environment");
 
         /// <summary>Floor 层（玩家鼠标转身射线命中层；工程未配置时 -1 → 地板保持默认层）。Awake 里解析（Unity 禁止字段初始化调 NameToLayer）。</summary>
         private static int FloorLayer = -1;
@@ -60,7 +62,7 @@ namespace Com.Zombtoy.Game
             _environment = null;
         }
 
-        /// <summary>重建 Level 环境（幂等：已有则激活）：程序化蓝灰地板 + 四周围墙（任务：视图自建视觉，不依赖 prefab）。</summary>
+        /// <summary>重建 Level 环境（幂等：已有则激活）：优先原 Environment.prefab，失败回退程序化地板+围墙。</summary>
         private void EnsureEnvironment()
         {
             if (_environment != null)
@@ -69,11 +71,139 @@ namespace Com.Zombtoy.Game
                 return;
             }
 
-            var root = new GameObject("Zombtoy_Level1_Environment");
-            BuildProgrammaticFloor(root.transform); // 程序化地板 + 四周围墙（prefab GUID 断链不依赖）
-            _environment = root;
-
+            _environment = BuildEnvironment();
             FrameIsoCamera(); // 等距俯视兜底摆位（PlayerView 随后每帧接管 Camera.main 跟随）
+        }
+
+        /// <summary>
+        /// 构建 Level 环境：经 context.Resources.Load 加载原 Environment.prefab（Rule 3，禁 Resources.Load/AssetDatabase）；
+        /// 加载失败回退程序化蓝灰地板+四周围墙（bundle 缺失时保证可玩）。
+        /// </summary>
+        private static GameObject BuildEnvironment()
+        {
+            var ctx = GameMod.Context;
+            GameObject? env = null;
+            if (ctx is not null)
+            {
+                try { env = ctx.Resources.Load(EnvironmentPrefab) as GameObject; }
+                catch (System.Exception e) { Debug.LogError($"[GameView] 环境加载异常 {EnvironmentPrefab}: {e.Message}"); env = null; }
+            }
+
+            GameObject root;
+            if (env is null)
+            {
+                Debug.LogWarning($"[GameView] 原环境缺失（{EnvironmentPrefab}）→ 回退程序化地板");
+                root = new GameObject("Zombtoy_Level1_Environment");
+                BuildProgrammaticFloor(root.transform);
+                return root;
+            }
+
+            root = Object.Instantiate(env);
+            root.name = "Zombtoy_Level1_Environment";
+            FixMigratedLevelPosition(root);  // 迁移后平台整体抬升 ≈23.6 → 回落 y=0（原版 Level1 平台顶面贴地）
+            FixMigratedLevelWalls(root);     // 迁移后 Wall/Sides 变 70m 实心盒遮挡全场 → 隐藏（原版为薄墙）
+            RemapEnvironmentMaterials(root, ctx);         // 内嵌材质无纹理 → 本 Mod Materials/ 按名重映射（Rule 3）
+            EnsureFloorLayer(root.transform);          // 原环境 Floor 切到 Floor 层（鼠标转身射线）
+            EnsureRaycastSurface(root);                // 鼠标转身射线命中面兜底
+            Debug.Log($"[GameView] 原环境已加载 → {EnvironmentPrefab}");
+            return root;
+        }
+
+        /// <summary>
+        /// 迁移缩放修复：原版 Wall/Sides/Stars 是薄墙/装饰，迁移后重导入比例失真成覆盖整个场地的实心大盒
+        /// （Wall 72×41×72 跨 z=-0.8..71、Sides 70×23×70 盖满 ±35、Stars 68×30×68 同）→ 隐藏这几类结构体
+        /// （Base/Planks 地板保留）。
+        /// </summary>
+        private static void FixMigratedLevelWalls(GameObject root)
+        {
+            foreach (var t in root.GetComponentsInChildren<Transform>())
+            {
+                if (t.name == "Wall" || t.name == "Sides" || t.name == "Stars")
+                {
+                    t.gameObject.SetActive(false);
+                    Debug.Log($"[GameView] 迁移缩放失真结构已隐藏: {t.name}");
+                }
+            }
+        }
+
+        /// <summary>
+        /// 环境材质重映射：FBX/prefab 内嵌材质打包后无纹理 → 用本 Mod Materials/&lt;对象名&gt;Material.mat 替换
+        /// （Rule 3；纹理 GUID 已修复。Collider 类对象/无对应材质的保持默认，不阻塞）。
+        /// </summary>
+        private static void RemapEnvironmentMaterials(GameObject root, global::Game.Mod.Runtime.IModContext? ctx)
+        {
+            if (ctx is null) return;
+            var assigned = 0;
+            foreach (var r in root.GetComponentsInChildren<Renderer>())
+            {
+                var name = r.gameObject.name.Replace("Collider", "");
+                if (name == "Stars") name = "Star"; // 材质资产名是 StarMaterial（对象是 Stars）
+                if (name == "Base" || name == "Sides" || name == "Floor" || name == "LevelExtent")
+                    continue; // 平台结构/无对应材质：保持默认
+                Material? mat = null;
+                try
+                {
+                    mat = ctx.Resources.Load(new global::Game.Mod.Contract.AssetId(GameMod.ModIdValue, $"Materials/{name}Material")) as Material;
+                }
+                catch (System.Exception) { mat = null; }
+                if (mat == null) continue;
+                r.sharedMaterial = mat;
+                assigned++;
+            }
+            if (assigned > 0)
+                Debug.Log($"[GameView] 环境材质重映射 {assigned} 个渲染体 → Materials/*Material");
+        }
+
+        /// <summary>
+        /// 迁移坐标修复：原工程 Level1 平台在 y=0，迁移后 prefab 内部坐标整体抬升（≈23.6，Floor.fbx
+        /// 重导入比例差异）→ 把最大水平台面（Base/Planks，47×47）顶面回落 y=0，敌人/道具按逻辑 y=0 站立。
+        /// </summary>
+        private static void FixMigratedLevelPosition(GameObject root)
+        {
+            var top = float.MinValue;
+            var found = false;
+            foreach (var r in root.GetComponentsInChildren<Renderer>())
+            {
+                if (r.bounds.size.y < 2f && r.bounds.size.x > 20f && r.bounds.size.z > 20f)
+                {
+                    if (r.bounds.max.y > top) { top = r.bounds.max.y; }
+                    found = true;
+                }
+            }
+            if (!found) return; // 无大平台（程序化兜底已覆盖）
+            root.transform.localPosition = new Vector3(0f, -top, 0f);
+            Debug.Log($"[GameView] 平台顶面回落 y=0（偏移 {top:F2}）");
+        }
+
+        /// <summary>把名为 Floor 的对象及其子树切到 Floor 层（原 Level1 环境 Floor 在默认层，鼠标转身射线契约 §8）。</summary>
+        private static void EnsureFloorLayer(Transform root)
+        {
+            if (FloorLayer < 0) return; // 工程未配置 Floor 层：保持原样，PlayerView 回退任意层
+            if (root.name == "Floor")
+            {
+                SetLayerRecursive(root.gameObject, FloorLayer);
+                return;
+            }
+            foreach (Transform child in root)
+                EnsureFloorLayer(child);
+        }
+
+        /// <summary>原环境 Floor 无 collider（仅 Transform+Animator）→ 补一块不可见 Floor 层命中面，供玩家鼠标转身射线。</summary>
+        private static void EnsureRaycastSurface(GameObject root)
+        {
+            if (FloorLayer < 0) return;
+            var probe = new GameObject("FloorRaycastSurface");
+            probe.transform.SetParent(root.transform, false);
+            probe.layer = FloorLayer;
+            var box = probe.AddComponent<BoxCollider>();
+            box.center = new Vector3(0f, -0.25f, 0f);
+            box.size = new Vector3(50f, 0.2f, 50f); // 覆盖原 Level1 包围盒（±24 内），顶部 y≈-0.15 不阻挡角色
+        }
+
+        private static void SetLayerRecursive(GameObject go, int layer)
+        {
+            go.layer = layer;
+            foreach (Transform child in go.transform) SetLayerRecursive(child.gameObject, layer);
         }
 
         /// <summary>加载天空盒材质（AllSkyFree 资源域，Rule 3；失败返回 null → 保持宿主默认天空盒）。</summary>

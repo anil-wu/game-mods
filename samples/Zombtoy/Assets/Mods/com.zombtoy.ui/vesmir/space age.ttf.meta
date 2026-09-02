@@ -1,5 +1,7 @@
 fileFormatVersion: 2
-guid: 87a69eacc9b4581439caf6aef7d82c2b
+guid: 306e4d70eb7647b4dbf6925fa96e9b11
+timeCreated: 1648853016
+licenseType: Free
 TrueTypeFontImporter:
   externalObjects: {}
   serializedVersion: 4
@@ -8,6 +10,7 @@ TrueTypeFontImporter:
   characterSpacing: 0
   characterPadding: 1
   includeFontData: 1
+  fontName: Space Age
   fontNames:
   - Space Age
   fallbackFontReferences: []
@@ -15,7 +18,6 @@ TrueTypeFontImporter:
   fontRenderingMode: 0
   ascentCalculationMode: 1
   useLegacyBoundsCalculation: 0
-  shouldRoundAdvanceValue: 1
   userData: 
   assetBundleName: 
   assetBundleVariant: 

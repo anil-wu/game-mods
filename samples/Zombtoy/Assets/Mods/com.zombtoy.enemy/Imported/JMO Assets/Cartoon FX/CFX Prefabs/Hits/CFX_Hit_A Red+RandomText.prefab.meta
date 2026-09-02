@@ -1,7 +1,8 @@
 fileFormatVersion: 2
-guid: 7f0804dd3a27b4f4fa0cf0234d52cf61
-PrefabImporter:
-  externalObjects: {}
-  userData: 
-  assetBundleName: 
-  assetBundleVariant: 
+guid: 6579afd9ea93fa94286f4cb58fdeb2b5
+labels:
+- cartoonfx
+- hit
+- particles
+- text
+- toon

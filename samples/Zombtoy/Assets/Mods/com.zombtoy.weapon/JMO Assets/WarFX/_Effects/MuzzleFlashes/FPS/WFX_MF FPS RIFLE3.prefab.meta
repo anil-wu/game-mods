@@ -1,7 +1,8 @@
 fileFormatVersion: 2
-guid: 0c38b24184892f34ebf9a672a8a215ea
-PrefabImporter:
-  externalObjects: {}
-  userData: 
-  assetBundleName: 
-  assetBundleVariant: 
+guid: 8eaaa4f553116f44b8459bc24201c514
+labels:
+- warfx
+- particles
+- weapon
+- muzzle flash
+- desktop

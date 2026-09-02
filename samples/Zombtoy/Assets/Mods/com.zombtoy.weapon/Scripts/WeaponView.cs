@@ -1,4 +1,5 @@
 using Game.ECS;
+using Game.Mod.Contract;
 using Game.Mod.Runtime;
 using UnityEngine;
 
@@ -29,7 +30,18 @@ namespace Com.Zombtoy.Weapon
         private float _effectsTimer;
         private GameObject? _heldWeapon;
 
-        // 表现（4 槽枪模 + UI，Inspector 挂载，资源迁移时按 prefab 校准）
+        // ---- 原枪模资源 AssetId（Rule 3：经本 Mod context.Resources.Load；路径 = Mod 目录内相对路径去扩展名） ----
+        // 槽位映射（契约 §9）：0 Machine Gun / 1 Shotgun / 2 Rocket Launcher / 3 Cryo Pistol
+        // Cryo Pistol 无独立模型 → 用 Guns/MultiShot 多管枪占位；加载失败回退（不显示枪模，不影响逻辑）
+        private static readonly AssetId[] GunPrefabIds =
+        {
+            new(WeaponMod.ModIdValue, "Guns/Machine Gun"),
+            new(WeaponMod.ModIdValue, "Guns/Shotgun 1"),
+            new(WeaponMod.ModIdValue, "RocketLauncher"),
+            new(WeaponMod.ModIdValue, "Guns/MultiShot"),
+        };
+
+        // 表现（4 槽枪模 + UI，Inspector 可挂载，缺省走资源加载）
         public GameObject[] WeaponPrefabs = new GameObject[WeaponConfig.SlotCount];
         public string[] WeaponNames = { "Machine Gun", "Shotgun", "Rocket Launcher", "Cryo Pistol" };
         public UnityEngine.UI.Text? GunText;
@@ -101,10 +113,11 @@ namespace Com.Zombtoy.Weapon
                 });
                 ctx.Messages.Subscribe(WeaponMod.WeaponSwitchedEvent, (in Game.Messaging.MessageEnvelope _, Game.Mod.Contract.Wire.PayloadReader reader) =>
                 {
-                    if (reader.TryReadUInt32(1, out var slot) && GunText != null && slot < WeaponNames.Length)
+                    if (reader.TryReadUInt32(1, out var slot))
                     {
-                        GunText.text = WeaponNames[slot];
-                        ShowWeapon((int)slot);
+                        if (GunText != null && slot < WeaponNames.Length)
+                            GunText.text = WeaponNames[slot];
+                        ShowWeapon((int)slot); // 枪模展示（契约 §8；不依赖 GunText 是否存在）
                     }
                 });
             }
@@ -235,16 +248,33 @@ namespace Com.Zombtoy.Weapon
 
         // ---- 表现辅助 ----
 
+        /// <summary>展示当前槽枪模：优先 Inspector WeaponPrefabs，缺省经 context.Resources.Load 加载原枪模（Rule 3）。</summary>
         private void ShowWeapon(int index)
         {
             if (_heldWeapon is not null) Destroy(_heldWeapon);
-            if (index < 0 || index >= WeaponPrefabs.Length || WeaponPrefabs[index] is null) return;
-            _heldWeapon = Instantiate(WeaponPrefabs[index]);
+            if (index < 0 || index >= WeaponPrefabs.Length) return;
+            var gun = WeaponPrefabs[index] != null ? WeaponPrefabs[index] : LoadGun(index);
+            if (gun is null) return; // 原枪模缺失：不显示（不影响权威逻辑）
+            _heldWeapon = Instantiate(gun);
             if (_heldWeapon is not null && _camera is not null)
             {
                 _heldWeapon.transform.SetParent(_camera.transform, false);
                 _heldWeapon.transform.localPosition = new Vector3(0.25f, -0.2f, 0.5f);
             }
+        }
+
+        /// <summary>经 context.Resources.Load 加载原枪模 prefab（Rule 3；失败返回 null，调用方不显示）。</summary>
+        private static GameObject? LoadGun(int index)
+        {
+            if (index < 0 || index >= GunPrefabIds.Length) return null;
+            var ctx = WeaponMod.Context;
+            if (ctx is null) return null;
+            GameObject? gun = null;
+            try { gun = ctx.Resources.Load(GunPrefabIds[index]) as GameObject; }
+            catch (System.Exception e) { Debug.LogWarning($"[WeaponView] 枪模加载异常 {GunPrefabIds[index]}: {e.Message}"); gun = null; }
+            if (gun is null) Debug.LogWarning($"[WeaponView] 枪模缺失（{GunPrefabIds[index]}）→ 不显示（不影响权威逻辑）");
+            else Debug.Log($"[WeaponView] 枪模已加载 slot={index} → {GunPrefabIds[index]}");
+            return gun;
         }
 
         private void RefreshHud()
@@ -259,10 +289,8 @@ namespace Com.Zombtoy.Weapon
             {
                 if (AmmoText is not null) AmmoText.text = $"{inMag}/{reserve}";
                 if (GunText != null && slot < WeaponNames.Length)
-                {
                     GunText.text = WeaponNames[slot];
-                    ShowWeapon((int)slot);
-                }
+                ShowWeapon((int)slot); // 初始枪模展示（契约 §8：weapon:get_state 后挂原枪模；不依赖 GunText）
             }
         }
 
