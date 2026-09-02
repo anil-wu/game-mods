@@ -7,34 +7,59 @@ using UnityEngine.AI;
 namespace Com.Zombtoy.Enemy
 {
     /// <summary>
-    /// 敌人视图（MonoBehaviour 表现层，不参与无头测试，CONTRACT.md §8）：
-    /// - 持有 public uint EntityId（武器射线命中 collider → GetComponentInParent&lt;EnemyView&gt;().EntityId，summary §0.6）
-    /// - 视觉：优先加载**原游戏资源**（Rule 3：经本 Mod context.Resources.Load，不 Resources.Load/AssetDatabase）——
-    ///   Models/Characters/ 下 Zombunny/ZomBear/Hellephant FBX + ImportThis/Clown、ZombieDuck FBX，
-    ///   按 EnemyKind 选模型（巨型/Titan 用同一模型放大），材质用模型自带（不再手动染色）；
-    ///   加载失败（bundle 缺失/路径不符）回退程序化胶囊 + EnemyKind 配色（保证可玩不崩溃）。
-    /// - NavMesh 追击：每帧读逻辑权威 EnemyMovement（Speed×SpeedMul 缓速）驱动 NavMeshAgent，
-    ///   并把 NavMesh 实际位置回写 EnemyPosition（契约 §2：视图 NavMesh 同步回写）；无 NavMesh 时
-    ///   （宿主场景未烘焙）回退直接镜像逻辑 EnemyPosition（EnemyChaseSystem 已按玩家追击积分）。
-    /// - 追击目标：经 enemy Mod 静态桥 EnemyMod.TryGetPlayerPosition（二进制 ModCall，Rule 14）——
-    ///   不 FindGameObjectWithTag / 全局发现（Rule 12 禁例）。
-    /// - 死亡：读 EnemyFlags.IsSinking → 下沉动画（sinkSpeed，原版 EnemyHealth 表现）；实体销毁 → 视图自毁
+    /// 敌人视图（MonoBehaviour 表现层，不参与无头测试，CONTRACT.md §8）。
+    /// 复刻宪法 §0：敌人表现**原原本本用原 prefab**——不再加载裸 FBX + AddComponent 自建 NavMeshAgent，
+    /// 而是由 EnemySpawnerView 实例化原敌人 prefab（Zombunny.prefab / ZomBear.prefab / Hellephant.prefab /
+    /// Giant Zombunny.prefab / Giant Zombear.prefab / Giant Hellephant.prefab / Titan Zombunny.prefab /
+    /// Clown.prefab / MiniClown.prefab / ZomDuckk.prefab，enemy Mod 根目录，AssetId 含扩展名精确匹配，Rule 3）；
+    /// 本视图只绑定 prefab 自带组件并按原版行为驱动：
+    /// - NavMeshAgent：GetComponent&lt;NavMeshAgent&gt;（prefab 自带；原版 EnemyMovement 用法）每帧按逻辑权威
+    ///   EnemyMovement（Speed×SpeedMul 缓速）驱动，并把 NavMesh 实际位置回写 EnemyPosition（契约 §2）；
+    ///   无 NavMesh（宿主场景未烘焙）回退镜像逻辑 EnemyPosition（EnemyChaseSystem 已按玩家追击积分）。
+    /// - Animator：GetComponent&lt;Animator&gt;（prefab 自带 enemyAC / Clown / ZomDuckk 控制器），死亡时对齐原版
+    ///   EnemyHealth：anim.SetTrigger("Dead")（死亡下沉动画）+ StartSinking 平移下沉。
+    /// - 射线命中：prefab 自带 Collider（根 CapsuleCollider + SphereCollider）→ GetComponentInParent&lt;EnemyView&gt;
+    ///   取 EntityId → enemy:damage（契约 §8，summary §0.6）。
+    /// - prefab 上悬空的原脚本组件（EnemyHealth/EnemyMovement 等 m_Script，代码已重写）**忽略**，不依赖不驱动。
+    /// - 材质防御：prefab 自带模型材质/贴图链在包内完整时不动；断链/丢贴图时按名重链补（日志声明，Rule 3）。
     /// </summary>
     public sealed class EnemyView : MonoBehaviour, IEntityView
     {
-        // ---- 原游戏资源 AssetId（Rule 3 / §8.2：路径 = Mod 目录内相对路径去扩展名） ----
-        private static readonly AssetId ZombunnyModel = new(EnemyMod.ModIdValue, "Models/Characters/Zombunny");
-        private static readonly AssetId ZomBearModel = new(EnemyMod.ModIdValue, "Models/Characters/ZomBear");
-        private static readonly AssetId HellephantModel = new(EnemyMod.ModIdValue, "Models/Characters/Hellephant");
-        private static readonly AssetId ClownModel = new(EnemyMod.ModIdValue, "ImportThis/Clown");
-        private static readonly AssetId DuckModel = new(EnemyMod.ModIdValue, "ImportThis/ZombieDuck");
-        private static readonly AssetId EnemyAc = new(EnemyMod.ModIdValue, "Animations/enemyAC");
-        // 自带材质（FBX 内嵌材质打包后无纹理 → 用本 Mod .mat 重映射，Rule 3；纹理 GUID 已修复可解析）
-        private static readonly AssetId ZombunnyMat = new(EnemyMod.ModIdValue, "Materials/ZombunnyMaterial");
-        private static readonly AssetId ZomBearMat = new(EnemyMod.ModIdValue, "Materials/ZombearMaterial");
-        private static readonly AssetId HellephantMat = new(EnemyMod.ModIdValue, "Materials/HellephantMaterial");
-        private static readonly AssetId ClownMat = new(EnemyMod.ModIdValue, "ImportThis/Materials/Clown_Diff");
-        private static readonly AssetId DuckMat = new(EnemyMod.ModIdValue, "ImportThis/Materials/ZomDuckDiffuse");
+        // ---- 原敌人 prefab AssetId（Rule 3 / §8.2：路径 = Mod 目录内相对路径，**带扩展名 .prefab**——
+        // 扩展名精确匹配（资源后端 Load 先精确后 stem 兜底，见 UnityAssetBundleBackend）） ----
+        private static readonly AssetId[] PrefabIds =
+        {
+            new(EnemyMod.ModIdValue, "Zombunny.prefab"),          // 0 Zombunny
+            new(EnemyMod.ModIdValue, "ZomBear.prefab"),           // 1 ZomBear
+            new(EnemyMod.ModIdValue, "Hellephant.prefab"),        // 2 Hellephant
+            new(EnemyMod.ModIdValue, "Giant Zombunny.prefab"),    // 3 Giant Zombunny
+            new(EnemyMod.ModIdValue, "Giant Zombear.prefab"),     // 4 Giant Zombear
+            new(EnemyMod.ModIdValue, "Giant Hellephant.prefab"),  // 5 Giant Hellephant
+            new(EnemyMod.ModIdValue, "Titan Zombunny.prefab"),    // 6 Titan Zombunny（首领）
+            new(EnemyMod.ModIdValue, "Clown.prefab"),             // 7 Clown
+            new(EnemyMod.ModIdValue, "MiniClown.prefab"),         // 8 MiniClown
+            new(EnemyMod.ModIdValue, "ZomDuckk.prefab"),          // 9 ZomDuck（原 prefab 双 k 拼写）
+        };
+
+        // 模型自带材质按名重链兜底（仅 prefab 材质/贴图确实丢失时用；AssetId 含扩展名）。
+        // 巨型/Titan 复用基础类型材质；MiniClown 复用 Clown。
+        private static readonly AssetId[] KindBodyMaterialIds =
+        {
+            new(EnemyMod.ModIdValue, "Materials/ZombunnyMaterial.mat"),   // 0/3/6 Zombunny 系
+            new(EnemyMod.ModIdValue, "Materials/ZombearMaterial.mat"),    // 1/4 Zombear 系
+            new(EnemyMod.ModIdValue, "Materials/HellephantMaterial.mat"), // 2/5 Hellephant 系
+            new(EnemyMod.ModIdValue, "Materials/ZombunnyMaterial.mat"),
+            new(EnemyMod.ModIdValue, "Materials/ZombearMaterial.mat"),
+            new(EnemyMod.ModIdValue, "Materials/HellephantMaterial.mat"),
+            new(EnemyMod.ModIdValue, "Materials/ZombunnyMaterial.mat"),
+            new(EnemyMod.ModIdValue, "ImportThis/Materials/Clown_Diff.mat"),       // 7/8 Clown 系
+            new(EnemyMod.ModIdValue, "ImportThis/Materials/Clown_Diff.mat"),
+            new(EnemyMod.ModIdValue, "ImportThis/Materials/ZomDuckDiffuse.mat"),   // 9 ZomDuck
+        };
+
+        /// <summary>按 EnemyKind 编号取原 prefab AssetId（越界防御 → Zombunny）。</summary>
+        public static AssetId PrefabIdForKind(byte kind) =>
+            PrefabIds[kind < PrefabIds.Length ? kind : 0];
 
         /// <summary>视图绑定的敌人实体（宿主 EnemySpawnerView 实例化时写入，契约 §8）。</summary>
         public uint EntityId;
@@ -45,43 +70,22 @@ namespace Com.Zombtoy.Enemy
         /// <summary>下沉速度（对齐原版 EnemyHealth.sinkSpeed=2.5）。</summary>
         public float SinkSpeed = EnemyConfig.SinkSpeed;
 
-        /// <summary>回退图元配色（按 EnemyKind 编号，契约 §1；仅模型加载失败时使用，多色便于识别）。</summary>
-        private static readonly Color[] KindColors =
-        {
-            new(0.45f, 0.75f, 0.35f), // 0 Zombunny 绿
-            new(0.58f, 0.4f, 0.22f),  // 1 ZomBear 棕
-            new(0.6f, 0.6f, 0.62f),   // 2 Hellephant 灰
-            new(0.28f, 0.52f, 0.22f), // 3 GiantZombunny 深绿
-            new(0.45f, 0.3f, 0.16f),  // 4 GiantZomBear 深棕
-            new(0.42f, 0.44f, 0.5f),  // 5 GiantHellephant 深灰
-            new(0.4f, 0.16f, 0.5f),   // 6 Titan 紫
-            new(0.8f, 0.2f, 0.2f),    // 7 Clown 红
-            new(0.95f, 0.6f, 0.15f),  // 8 MiniClown 橙
-            new(0.9f, 0.85f, 0.2f),   // 9 ZomDuck 黄
-        };
-
-        /// <summary>回退图元体型（胶囊高度倍率：普通≈1 / 巨型 1.7+ / Titan 2.4；脚底着地）。</summary>
-        private static readonly float[] KindScale =
-        {
-            0.9f, 1.0f, 1.1f, 1.7f, 1.8f, 1.9f, 2.4f, 1.0f, 0.6f, 0.8f,
-        };
-
-        /// <summary>
-        /// 模型目标身高（原版 Collider 尺寸校准：普通 1.5m、Hellephant 大象 2.6m、
-        /// 巨型/Titan 按类别倍率放大；FBX 导入比例差异（如 Hellephant 14m）统一归一化）。
-        /// </summary>
-        private static readonly float[] KindHeight =
-        {
-            1.55f, 1.6f, 2.6f, 2.6f, 2.6f, 4.9f, 3.7f, 1.55f, 1.2f, 1.5f,
-        };
-
+        // prefab 自带组件（非自建）：GetComponent 对内置组件可能返回 fake-null（is null/?? 不识别），
+        // 全部按 Unity 重载的 == null 判空（null = 原 prefab 缺组件 / 空 GO 兜底）。
         private NavMeshAgent? _nav;
-        private bool _sinking;
-        private bool _visualized;
+        private Animator? _anim;
+        private Rigidbody? _rb;
+        private CapsuleCollider? _capsule;
+        private bool _bound;   // 组件绑定/出生摆位只做一次
+        private bool _dying;   // 死亡表现只触发一次（对齐原版 EnemyHealth.Death()/StartSinking()）
+        private bool _sinking; // 下沉中（每帧 transform.Translate 下沉）
 
         private void Awake()
         {
-            BuildVisuals(); // 宿主只建空 GameObject → 视图自建 NavMeshAgent（模型在 ApplyKindVisual 按类别加载）
+            // Shootable 层：武器射线命中层（宿主工程按名解析；未配置该层时保持 prefab 原层，
+            // WeaponView 回退任意层）。Awake 里解析（Unity 禁止字段初始化调 NameToLayer）。
+            var shootable = LayerMask.NameToLayer("Shootable");
+            if (shootable >= 0) gameObject.layer = shootable;
         }
 
         private void Update()
@@ -92,29 +96,25 @@ namespace Com.Zombtoy.Enemy
             var e = new Entity(EntityId);
             if (!world.Exists(e))
             {
-                // 实体已销毁（下沉到点 / reset 清场）→ 视图自毁
-                Destroy(gameObject);
+                Destroy(gameObject); // 实体已销毁（下沉到点 / reset 清场）→ 视图自毁
                 return;
             }
             if (!world.TryGet<EnemyFlags>(e, out var flags)) return;
+            if (!world.TryGet<EnemyType>(e, out var type)) return;
 
-            if (!_visualized) ApplyKindVisual(world, e); // 首次实体可见：按 EnemyKind 加载模型/配色体型
+            if (!_bound) BindInstance(world, e, type.Kind); // 组件来自原 prefab 实例 + 出生摆位（幂等）
 
             if (flags.IsDead)
             {
-                // 死亡：停 NavMesh → 下沉动画（EnemyHealthSystem 计时到点后销毁实体，本视图随之自毁）
-                if (flags.IsSinking && !_sinking)
-                {
-                    _sinking = true;
-                    if (_nav != null) _nav.enabled = false;
-                }
+                // 死亡：触发原版 EnemyHealth 死亡表现（Dead 动画触发 + StartSinking 处理一次），随后平移下沉
+                if (!_dying) StartDeath();
                 if (_sinking)
                     transform.Translate(Vector3.down * SinkSpeed * Time.deltaTime);
                 return;
             }
 
-            // 存活：NavMesh 追击玩家（逻辑权威速度；视图按 NavMesh 避障路径走）
-            if (_nav != null && _nav.isOnNavMesh)
+            // 存活：NavMesh 追击玩家（prefab 自带 NavMeshAgent；视图按 NavMesh 避障路径走）
+            if (_nav != null && _nav.enabled && _nav.isOnNavMesh)
             {
                 if (world.TryGet<EnemyMovement>(e, out var mv))
                     _nav.speed = Mathf.Max(0.01f, mv.Speed * mv.SpeedMul); // 缓速（冰）生效
@@ -125,201 +125,118 @@ namespace Com.Zombtoy.Enemy
                 var pos = transform.position;
                 world.Add(e, new EnemyPosition { X = pos.x, Y = pos.y, Z = pos.z });
             }
-            else if (world.TryGet<EnemyPosition>(e, out var pos))
+            else if (_nav is null || !_nav.enabled)
             {
-                // 无 NavMesh（宿主未烘焙，回退）：直接按逻辑位置表现（EnemyChaseSystem 已积分追击）
-                transform.position = new Vector3(pos.X, pos.Y, pos.Z);
-            }
-        }
-
-        /// <summary>自建移动组件（幂等：prefab 已有 Agent 时跳过——资源迁移路径兼容）。</summary>
-        private void BuildVisuals()
-        {
-            // Shootable 层：武器射线命中层（工程未配置该层时保持默认层，WeaponView 回退任意层）
-            var shootable = LayerMask.NameToLayer("Shootable");
-            if (shootable >= 0) gameObject.layer = shootable;
-
-            // NavMeshAgent（自建；宿主场景无烘焙 NavMesh 时 isOnNavMesh=false → Update 走逻辑位置回退）
-            // 注意：GetComponent 对内置组件可能返回 fake-null，必须用 Unity 重载的 == null 判断（is null 不识别）。
-            _nav = GetComponent<NavMeshAgent>();
-            if (_nav == null) _nav = gameObject.AddComponent<NavMeshAgent>();
-            if (_nav == null) return; // 防御（不可达）
-            _nav.speed = 3f;
-            _nav.acceleration = 8f;
-            _nav.angularSpeed = 720f;
-            _nav.radius = 0.5f;
-            _nav.height = 2f;
-            _nav.stoppingDistance = 1f;
-        }
-
-        /// <summary>按 EnemyKind 构建视觉：优先加载原 FBX 模型，失败回退胶囊图元（保留配色/体型）。</summary>
-        private void ApplyKindVisual(World world, Entity e)
-        {
-            _visualized = true;
-            if (!world.TryGet<EnemyType>(e, out var type)) return;
-            var idx = Mathf.Clamp(type.Kind, 0, KindColors.Length - 1);
-            var s = KindScale[idx];
-
-            // 原模型（Rule 3：经本 Mod context.Resources.Load；失败回退图元，不崩溃）
-            if (transform.Find("Model") is null)
-            {
-                if (TryLoadModel(type.Kind, s) == null)
-                    ApplyFallbackPrimitive(idx, s); // 模型缺失：回退图元
+                // 无 NavMesh（prefab 缺失兜底/宿主未烘焙，回退）：直接按逻辑位置表现（EnemyChaseSystem 已积分追击）
+                if (world.TryGet<EnemyPosition>(e, out var pos))
+                    transform.position = new Vector3(pos.X, pos.Y, pos.Z);
             }
         }
 
         /// <summary>
-        /// 经 context.Resources.Load 加载原 FBX 并实例化为 "Model" 子节点（Rule 3，禁 Resources.Load/AssetDatabase）。
-        /// 返回 null 表示资源缺失（bundle 未装/路径不符）——调用方回退图元。
+        /// 首次绑定：从原 prefab 实例 GetComponent 拿自带组件（对齐原版 EnemyHealth/EnemyMovement
+        /// GetComponent&lt;NavMeshAgent/Animator/Rigidbody/CapsuleCollider&gt; 用法——不 AddComponent 自建），
+        /// 并按 ECS 出生点 EnemyPosition 摆位（NavMeshAgent Warp 落位，避免从 prefab 默认原点开跑）。
         /// </summary>
-        private GameObject? TryLoadModel(byte kind, float scale)
+        private void BindInstance(World world, Entity e, byte kind)
         {
-            var ctx = EnemyMod.Context;
-            if (ctx is null) return null; // 未注册（防御）
+            _bound = true;
+            _nav = GetComponent<NavMeshAgent>();
+            _anim = GetComponent<Animator>();
+            _rb = GetComponent<Rigidbody>();
+            _capsule = GetComponent<CapsuleCollider>();
+            Debug.Log($"[EnemyView] 绑定原 prefab 实例 kind={kind} → {PrefabIdForKind(kind).Path}："
+                      + $"NavMeshAgent={_nav != null} Animator={_anim != null} Rigidbody={_rb != null} "
+                      + $"CapsuleCollider={_capsule != null} Colliders={GetComponentsInChildren<Collider>().Length}");
 
-            GameObject? asset = null;
-            try { asset = ctx.Resources.Load(ModelForKind(kind)) as GameObject; }
-            catch (System.Exception e) { Debug.LogWarning($"[EnemyView] 模型加载异常 {ModelForKind(kind)}: {e.Message}"); asset = null; }
-            if (asset is null)
+            // 出生摆位：逻辑出生点（契约 §2 EnemyPosition）；有 NavMesh 时 Warp 落位（可追击）
+            var spawn = transform.position;
+            if (world.TryGet<EnemyPosition>(e, out var ep))
+                spawn = new Vector3(ep.X, ep.Y, ep.Z);
+            transform.position = spawn;
+            if (_nav != null && _nav.enabled)
             {
-                Debug.LogWarning($"[EnemyView] 原模型缺失（kind={kind}，AssetId={ModelForKind(kind)}）→ 回退图元");
-                return null;
+                var warped = false;
+                try { warped = _nav.Warp(spawn); }
+                catch (System.Exception ex) { Debug.LogWarning($"[EnemyView] Warp 异常: {ex.Message}"); warped = false; }
+                if (!warped) _nav.enabled = false; // 落不上 NavMesh（未烘焙）→ 走镜像逻辑位置路径
+                Debug.Log($"[EnemyView] 出生摆位 kind={kind} @ ({spawn.x:F1},{spawn.y:F1},{spawn.z:F1}) warp={warped}");
+            }
+            else if (_nav is null)
+            {
+                Debug.LogWarning($"[EnemyView] 实例无 NavMeshAgent（原 prefab 缺失走空 GO 兜底）kind={kind} → 按逻辑位置镜像");
             }
 
-            // 实例化（FBX 根自带导入比例 globalScale≈0.01；不同 FBX 导入尺寸差异大（Hellephant 达 14m））
-            var go = Object.Instantiate(asset);
-            go.name = "Model";
-            go.transform.SetParent(null, false); // 先脱离，避免父级 transform 影响 bounds 计算
-            go.transform.position = Vector3.zero;
+            RelinkBrokenMaterials(kind); // 材质/贴图防御：prefab 链断链时按名重链（日志声明）
+        }
 
-            // 身高归一化：按类别目标身高（保留 FBX 自然比例 → 等比缩放到 KindHeight）
-            var rs = go.GetComponentsInChildren<Renderer>();
-            if (rs.Length > 0)
+        /// <summary>
+        /// 死亡表现（对齐原版 EnemyHealth.Death() + StartSinking()，只触发一次）：
+        /// anim.SetTrigger("Dead")（enemyAC 死亡下沉动画）、NavMeshAgent 停用、Rigidbody 转运动学
+        /// （防物理抖动/尸体挡路）、CapsuleCollider 转 Trigger（尸体不再挡路；射线命中语义同原版）。
+        /// 随后 Update 每帧按 sinkSpeed 平移下沉（原版 transform.Translate(-Vector3.up*sinkSpeed*dt)），
+        /// 到点由 EnemyHealthSystem 销毁实体 → 本视图随实体销毁自毁。
+        /// </summary>
+        private void StartDeath()
+        {
+            _dying = true;
+            if (_anim != null)
             {
-                var b = rs[0].bounds;
-                foreach (var r in rs) b.Encapsulate(r.bounds);
-                var h = b.size.y;
-                if (h > 0.001f)
+                try { _anim.SetTrigger("Dead"); } // 参数不存在时静默忽略（不抛异常），表现即平移下沉
+                catch (System.Exception ex) { Debug.LogWarning($"[EnemyView] 死亡动画触发异常: {ex.Message}"); }
+            }
+            if (_nav != null) _nav.enabled = false;      // 原版 StartSinking：停追击代理
+            if (_rb != null) _rb.isKinematic = true;     // 原版 StartSinking：运动学防物理干扰
+            if (_capsule != null) _capsule.isTrigger = true; // 原版 Death：尸体转 Trigger 不挡路
+            _sinking = true;
+            Debug.Log("[EnemyView] 敌人死亡：Dead 动画触发 + 停 NavMeshAgent + Rigidbody 运动学 + 下沉");
+        }
+
+        /// <summary>
+        /// 材质/贴图防御（复刻宪法允许的原版资源缺失回退，日志声明）：prefab 自带模型材质完好（sharedMaterial
+        /// 非空且 mainTexture 非空）时**不干预**；断链/丢贴图时经 context.Resources.Load 按 EnemyKind 取
+        /// 本 Mod 自带材质（AssetId 带扩展名精确命中，Rule 3）整条补链。渲染体对象名含类型名（Zombunny/Zombear/
+        /// Hellephant/Clown/ZomDuck…）的才算敌人模型，不误伤粒子装饰。
+        /// </summary>
+        private void RelinkBrokenMaterials(byte kind)
+        {
+            if (EnemyMod.Context is null) return;
+            var modelNames = new[] { "Zombunny", "Zombear", "Zombear", "Hellephant", "Clown", "ZomDuck", "Duck" };
+            var matId = KindBodyMaterialIds[kind < KindBodyMaterialIds.Length ? kind : 0];
+            Material? mat = null;
+            var relinked = 0;
+            foreach (var r in GetComponentsInChildren<Renderer>())
+            {
+                if (r is null) continue;
+                // 只认敌人模型渲染体（按对象名识别；巨型/Titan 子节点名是基础类型名）
+                var isBody = false;
+                foreach (var n in modelNames)
                 {
-                    var s = KindHeight[Mathf.Clamp(kind, 0, KindHeight.Length - 1)] / h;
-                    go.transform.localScale = new Vector3(s, s, s);
+                    if (r.gameObject.name.StartsWith(n, System.StringComparison.Ordinal)) { isBody = true; break; }
                 }
-            }
+                if (!isBody) continue;
+                var cur = r.sharedMaterial;
+                if (cur != null && cur.mainTexture != null) continue; // 原材质完好：不干预
 
-            // 脚底着地：按渲染 bounds 自动对齐（FBX 根可能在模型中心/脚底，不依赖导入约定）
-            var feetY = ComputeFeetLocalY(go);
-            go.transform.SetParent(transform, false);
-            go.transform.localPosition = new Vector3(0f, -feetY, 0f);
-
-            // Shootable 层（武器射线命中；模型整体入层）
-            var shootable = LayerMask.NameToLayer("Shootable");
-            if (shootable >= 0) SetLayerRecursive(go, shootable);
-
-            // Collider 供射线命中（FBX 导入 addColliders=0 无碰撞体）：独立 Hitbox 子节点（不受模型缩放污染）
-            if (go.GetComponentInChildren<Collider>() == null)
-            {
-                var hit = new GameObject("Hitbox");
-                hit.transform.SetParent(transform, false); // 与 Model 平级（根坐标系，scale=1）
-                if (shootable >= 0) hit.layer = shootable;
-                var col = hit.AddComponent<CapsuleCollider>();
-                col.radius = 0.5f * scale;
-                col.height = 1.5f * scale;
-                col.center = new Vector3(0f, 0.8f * scale, 0f); // 底部≈脚底
-            }
-
-            // Animator 挂 enemyAC.controller（Rule 3 经本 Mod Resources；Avatar 子资产 scope 不可达 → 保持绑定姿态，仍可见）
-            var anim = go.GetComponent<Animator>();
-            if (anim == null) anim = go.AddComponent<Animator>();
-            anim.applyRootMotion = false;
-            try { anim.runtimeAnimatorController = ctx.Resources.Load(EnemyAc) as RuntimeAnimatorController; }
-            catch (System.Exception ex) { Debug.LogWarning($"[EnemyView] enemyAC 加载异常: {ex.Message}"); }
-
-            // 材质重映射：FBX 内嵌材质打包后无纹理（materialSearch 未命中本 Mod 文件夹）→
-            // 用本 Mod 自带 .mat（纹理 GUID 已修复；加载失败保持模型默认材质，不阻塞）
-            var matId = MaterialForKind(kind);
-            if (matId is not null)
-            {
-                Material? mat = null;
-                try { mat = ctx.Resources.Load(matId.Value) as Material; }
-                catch (System.Exception me) { Debug.LogWarning($"[EnemyView] 材质加载异常 {matId}: {me.Message}"); mat = null; }
-                if (mat != null)
+                if (mat is null)
                 {
-                    foreach (var r in go.GetComponentsInChildren<Renderer>())
-                        r.sharedMaterial = mat;
+                    try { mat = EnemyMod.Context.Resources.Load(matId) as Material; }
+                    catch (System.Exception ex) { Debug.LogWarning($"[EnemyView] 材质重链加载异常 {matId}: {ex.Message}"); mat = null; }
+                    if (mat is null) { Debug.LogWarning($"[EnemyView] 材质重链失败（{matId}）→ 保持原样"); return; }
                 }
+                r.sharedMaterial = mat;
+                relinked++;
             }
-
-            Debug.Log($"[EnemyView] 敌人模型已加载 kind={kind} → {ModelForKind(kind)}（材质 {matId}）");
-            return go;
-        }
-
-        /// <summary>按 EnemyKind 选本 Mod 自带材质（与模型一一对应；巨型/Titan 复用基础材质）。</summary>
-        private static AssetId? MaterialForKind(byte kind) => kind switch
-        {
-            1 or 4 => ZomBearMat,
-            2 or 5 => HellephantMat,
-            7 or 8 => ClownMat,
-            9 => DuckMat,
-            _ => ZombunnyMat,
-        };
-
-        /// <summary>按 EnemyKind 选模型（巨型/Titan 复用基础模型放大；Clown/MiniClown/ZomDuck 用各自 FBX）。</summary>
-        private static AssetId ModelForKind(byte kind) => kind switch
-        {
-            1 or 4 => ZomBearModel,      // ZomBear / GiantZomBear
-            2 or 5 => HellephantModel,   // Hellephant / GiantHellephant
-            7 or 8 => ClownModel,        // Clown / MiniClown
-            9 => DuckModel,              // ZomDuck
-            _ => ZombunnyModel,          // Zombunny / GiantZombunny / Titan 同一模型放大
-        };
-
-        /// <summary>按渲染 bounds 算模型脚底在本地坐标系的 Y（不依赖 FBX 导入原点约定）。</summary>
-        private static float ComputeFeetLocalY(GameObject model)
-        {
-            var renderers = model.GetComponentsInChildren<Renderer>();
-            if (renderers.Length == 0) return 0f; // 无渲染体：保持根位置
-            var b = renderers[0].bounds;
-            foreach (var r in renderers) b.Encapsulate(r.bounds);
-            return model.transform.InverseTransformPoint(b.min).y;
-        }
-
-        private static void SetLayerRecursive(GameObject go, int layer)
-        {
-            go.layer = layer;
-            foreach (Transform child in go.transform) SetLayerRecursive(child.gameObject, layer);
-        }
-
-        /// <summary>回退图元：胶囊 + EnemyKind 配色/体型（模型加载失败时保持可玩，不崩溃）。</summary>
-        private void ApplyFallbackPrimitive(int idx, float s)
-        {
-            if (transform.Find("Body") != null) return; // 幂等
-
-            var shootable = LayerMask.NameToLayer("Shootable");
-            var body = GameObject.CreatePrimitive(PrimitiveType.Capsule);
-            body.name = "Body";
-            body.transform.SetParent(transform, false);
-            if (shootable >= 0) body.layer = shootable;
-
-            var renderer = body.GetComponent<Renderer>();
-            if (renderer is not null)
-                renderer.material = StandardMaterial(KindColors[idx]);
-
-            body.transform.localScale = new Vector3(s, s, s);
-            body.transform.localPosition = new Vector3(0f, s, 0f); // 半高 = 胶囊底着地（Y=0）
-        }
-
-        private static Material StandardMaterial(Color color)
-        {
-            var shader = Shader.Find("Standard");
-            var mat = shader != null ? new Material(shader) : new Material(Shader.Find("Diffuse"));
-            mat.color = color;
-            return mat;
+            if (relinked > 0)
+                Debug.LogWarning($"[EnemyView] 敌人模型材质断链 → 按名重链 {relinked} 个渲染体（{matId.Path}，原版资源缺失回退，日志声明）");
         }
     }
 
     /// <summary>
-    /// 宿主生成器视图（契约 §8）：订阅 EnemyMod.OnEnemySpawned，按 EnemyKind 实例化并绑定 EntityId。
-    /// prefab 未挂载（资源 GUID 断链未修）→ 空 GameObject，由 EnemyView.Awake 自建 NavMeshAgent + 按类别加载模型。
+    /// 宿主生成器视图（契约 §8）：订阅 EnemyMod.OnEnemySpawned，按 EnemyKind 实例化**原敌人 prefab**
+    /// （EnemyView.PrefabIdForKind 经本 Mod context.Resources.Load，Rule 3）并绑定 EntityId；
+    /// prefab 自带 NavMeshAgent/Animator/双 Collider/模型，EnemyView 只绑定不重建。
+    /// 原 prefab 确实缺失（bundle 未装）时回退空 GO（日志声明；不建自建胶囊/NavMeshAgent 近似物，复刻宪法）。
     /// </summary>
     public sealed class EnemySpawnerView : MonoBehaviour
     {
@@ -335,14 +252,40 @@ namespace Com.Zombtoy.Enemy
             if (world is null) return;
             var e = new Entity(entityId);
             if (!world.TryGet<EnemyType>(e, out var type)) return;
+            if (type.Kind >= PrefabsByKind.Length) return; // 防御
 
-            var prefab = type.Kind < PrefabsByKind.Length ? PrefabsByKind[type.Kind] : null;
-            var go = prefab != null
-                ? Instantiate(prefab)
-                : new GameObject($"Enemy_{entityId}"); // prefab 未挂载：空 GO，EnemyView 自建视觉
+            // 原敌人 prefab（优先 Inspector 挂载；缺省经 context.Resources.Load，Rule 3）
+            var prefab = PrefabsByKind[type.Kind] != null ? PrefabsByKind[type.Kind] : LoadPrefab(type.Kind);
+
+            GameObject go;
+            if (prefab is null)
+            {
+                Debug.LogError($"[EnemySpawnerView] 原敌人 prefab 缺失 kind={type.Kind}（{EnemyView.PrefabIdForKind(type.Kind).Path}）"
+                               + "→ 空 GO 兜底（无视觉/无碰撞；原版资源缺失回退，日志声明；不自建胶囊近似物）");
+                go = new GameObject($"Enemy_{entityId}");
+            }
+            else
+            {
+                go = Instantiate(prefab);
+                Debug.Log($"[EnemySpawnerView] 敌人实例化 kind={type.Kind} → {EnemyView.PrefabIdForKind(type.Kind).Path}"
+                          + "（原 prefab：NavMeshAgent/Animator/Rigidbody/双 Collider/模型自带，无自建组件）");
+            }
             go.name = $"Enemy_{entityId}";
             var view = go.GetComponent<EnemyView>() ?? go.AddComponent<EnemyView>();
             view.EntityId = entityId;
+        }
+
+        /// <summary>经本 Mod context.Resources.Load 加载原敌人 prefab（Rule 3；AssetId 带扩展名 .prefab 精确命中；失败返回 null）。</summary>
+        private static GameObject? LoadPrefab(byte kind)
+        {
+            var ctx = EnemyMod.Context;
+            if (ctx is null) return null; // 未注册（防御）
+            var id = EnemyView.PrefabIdForKind(kind);
+            GameObject? prefab = null;
+            try { prefab = ctx.Resources.Load(id) as GameObject; }
+            catch (System.Exception ex) { Debug.LogWarning($"[EnemySpawnerView] 敌人 prefab 加载异常 {id}: {ex.Message}"); prefab = null; }
+            if (prefab is null) Debug.LogWarning($"[EnemySpawnerView] 原敌人 prefab 加载失败（{id.Path}）");
+            return prefab;
         }
     }
 }
