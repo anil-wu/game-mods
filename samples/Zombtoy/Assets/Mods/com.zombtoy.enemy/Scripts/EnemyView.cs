@@ -22,6 +22,8 @@ namespace Com.Zombtoy.Enemy
     ///   取 EntityId → enemy:damage（契约 §8，summary §0.6）。
     /// - prefab 上悬空的原脚本组件（EnemyHealth/EnemyMovement 等 m_Script，代码已重写）**忽略**，不依赖不驱动。
     /// - 材质防御：prefab 自带模型材质/贴图链在包内完整时不动；断链/丢贴图时按名重链补（日志声明，Rule 3）。
+    /// - 粒子贴图防御（生成/出现特效方块修复）：prefab 粒子材质贴图 GUID 因迁移拆分断链 → EnemySpawnerView
+    ///   实例化后按材质名查表补 _MainTex（表见 ParticleTextureIdsByMaterial，16 组经原版工程核对），日志声明。
     /// </summary>
     public sealed class EnemyView : MonoBehaviour, IEntityView
     {
@@ -56,6 +58,37 @@ namespace Com.Zombtoy.Enemy
             new(EnemyMod.ModIdValue, "ImportThis/Materials/Clown_Diff.mat"),
             new(EnemyMod.ModIdValue, "ImportThis/Materials/ZomDuckDiffuse.mat"),   // 9 ZomDuck
         };
+
+        // ---- 粒子材质贴图按名重链表（生成/出现特效方块修复，Rule 3；AssetId 带扩展名精确命中） ----
+        // 根因：敌人 prefab 上粒子系统材质（CFX_SmallSpike_AddSoft / CFX_Skull / FluffParticleMaterial 等）的贴图
+        // 引用因迁移拆分 + Unity 重导 GUID 被断链（mainTexture==null → 粒子渲染成方块）。
+        // 表 = 粒子材质 m_Name → 原贴图：材质/贴图对应关系按原版 Cartoon FX 命名惯例整理，并逐项对照
+        // replica_projects/Zombtoy 原版工程（.meta GUID 完整未重导）核对——如 CFX_SmallSpike_AddSoft→
+        // CFX_T_SpacedSpike、CFX_Smoke_4frms→CFX_T_Smoke_4Frames.tga、FluffParticleMaterial→PuffSprite.png。
+        // 敌人 10 种 prefab 上全部 ParticleSystemRenderer 用到的 16 组材质均在表内；未用材质不进表。
+        private const string CfxTextureDir = "Imported/JMO Assets/Cartoon FX/Textures/";
+        private static readonly System.Collections.Generic.Dictionary<string, AssetId> ParticleTextureIdsByMaterial = new()
+        {
+            { "CFX_SmallSpike_AddSoft", new AssetId(EnemyMod.ModIdValue, CfxTextureDir + "CFX_T_SpacedSpike.png") },
+            { "CFX_Skull", new AssetId(EnemyMod.ModIdValue, CfxTextureDir + "CFX_T_Skull.png") },
+            { "CFX_Bubble", new AssetId(EnemyMod.ModIdValue, CfxTextureDir + "CFX_T_Bubble.png") },
+            { "CFX_RayRounded", new AssetId(EnemyMod.ModIdValue, CfxTextureDir + "CFX_T_RayRounded.png") },
+            { "CFX_Star Add", new AssetId(EnemyMod.ModIdValue, CfxTextureDir + "CFX_T_Star Add.png") },
+            { "CFX_Smoke_4frms", new AssetId(EnemyMod.ModIdValue, CfxTextureDir + "CFX_T_Smoke_4Frames.tga") },
+            { "CFX_Text_Boom", new AssetId(EnemyMod.ModIdValue, CfxTextureDir + "CFX_T_Text_Boom.tga") },
+            { "CFX3_FireBulk ADD", new AssetId(EnemyMod.ModIdValue, CfxTextureDir + "CFX3_T_FireBulk.png") },
+            { "CFX3_FireSparkle ADD", new AssetId(EnemyMod.ModIdValue, CfxTextureDir + "CFX3_T_FireSparkle.png") },
+            { "CFX_Anim_Bubble_Add", new AssetId(EnemyMod.ModIdValue, CfxTextureDir + "CFX_T_Anim4_Bubble.png") },
+            { "CFX_Anim_Poof_Add", new AssetId(EnemyMod.ModIdValue, CfxTextureDir + "CFX_T_Anim4_RoundedLines.png") },
+            { "CFX_Anim_Triangle2_AlphaBlendedPremult", new AssetId(EnemyMod.ModIdValue, CfxTextureDir + "CFX_T_Anim8_Triangle2.png") },
+            { "CFX2_Glow", new AssetId(EnemyMod.ModIdValue, CfxTextureDir + "CFX2_T_Glow.png") },
+            { "CFX2_SkullStretched Add", new AssetId(EnemyMod.ModIdValue, CfxTextureDir + "CFX2_T_SkullStretch.png") },
+            { "CFX2_WWSmoke2 AB", new AssetId(EnemyMod.ModIdValue, CfxTextureDir + "CFX2_T_WWInvSmoke2 AB.png") },
+            { "FluffParticleMaterial", new AssetId(EnemyMod.ModIdValue, "Textures/PuffSprite.png") },
+        };
+
+        /// <summary>已声明缺失的粒子材质名（同材质多次断链时缺失日志只打一次，避免每生成一个敌人刷屏）。</summary>
+        private static readonly System.Collections.Generic.HashSet<string> ParticleTexMissingLogged = new();
 
         /// <summary>按 EnemyKind 编号取原 prefab AssetId（越界防御 → Zombunny）。</summary>
         public static AssetId PrefabIdForKind(byte kind) =>
@@ -261,6 +294,43 @@ namespace Com.Zombtoy.Enemy
             if (relinked > 0)
                 Debug.LogWarning($"[EnemyView] 敌人模型材质断链 → 按名重链 {relinked} 个渲染体（{matId.Path}，原版资源缺失回退，日志声明）");
         }
+
+        /// <summary>
+        /// 敌人 prefab 粒子贴图按名重链（生成/出现特效方块修复；复刻宪法允许的原版资源缺失回退，日志声明）。
+        /// 粒子材质贴图完好（mainTexture 非空）时不干预；断链（mainTexture==null，渲染成方块）时按粒子材质
+        /// m_Name 查 ParticleTextureIdsByMaterial 表，经本 Mod context.Resources.Load 取原贴图
+        /// （AssetId 带扩展名精确命中，Rule 3）+ mat.SetTexture("_MainTex", tex) 补链（同 WeaponView 枪口先例）。
+        /// 查表不到（非敌人粒子材质）不干预保持原样；贴图缺失时日志声明且不换默认材质。
+        /// 修复写共享材质实例：同一材质的所有渲染体/后续生成一并恢复（幂等，之后 mainTexture 非空直接跳过）。
+        /// </summary>
+        internal void RelinkBrokenParticleTextures()
+        {
+            var ctx = EnemyMod.Context;
+            if (ctx is null) return; // 未注册（防御：空 GO 兜底/编辑器预览）
+            var relinked = 0;
+            foreach (var psr in GetComponentsInChildren<ParticleSystemRenderer>(true))
+            {
+                if (psr is null) continue;
+                var mat = psr.sharedMaterial;
+                if (mat is null) continue;
+                if (mat.mainTexture != null) continue; // 原粒子材质/贴图完好：不干预
+                if (!ParticleTextureIdsByMaterial.TryGetValue(mat.name, out var texId)) continue; // 非表内材质：保持原样
+                Texture? tex = null;
+                try { tex = ctx.Resources.Load(texId) as Texture; }
+                catch (System.Exception ex) { Debug.LogWarning($"[EnemyView] 粒子贴图加载异常 {texId}: {ex.Message}"); tex = null; }
+                if (tex is null)
+                {
+                    if (ParticleTexMissingLogged.Add(mat.name)) // 只声明一次
+                        Debug.LogWarning($"[EnemyView] 粒子贴图缺失（{mat.name}）→ 保持原样（原版资源缺失回退，日志声明）");
+                    continue;
+                }
+                mat.SetTexture("_MainTex", tex);
+                relinked++;
+                Debug.Log($"[EnemyView] 粒子贴图已按名重链 {mat.name} → {texId.Path}（生成/出现特效方块修复，日志声明）");
+            }
+            if (relinked > 0)
+                Debug.LogWarning($"[EnemyView] 敌人粒子材质贴图断链 → 按名重链 {relinked} 个粒子渲染体（原版资源缺失回退，日志声明）");
+        }
     }
 
     /// <summary>
@@ -304,6 +374,7 @@ namespace Com.Zombtoy.Enemy
             go.name = $"Enemy_{entityId}";
             var view = go.GetComponent<EnemyView>() ?? go.AddComponent<EnemyView>();
             view.EntityId = entityId;
+            view.RelinkBrokenParticleTextures(); // 实例化后立即按名重链粒子贴图（生成/出现特效方块修复，日志声明）
         }
 
         /// <summary>经本 Mod context.Resources.Load 加载原敌人 prefab（Rule 3；AssetId 带扩展名 .prefab 精确命中；失败返回 null）。</summary>
