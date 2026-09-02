@@ -122,6 +122,7 @@ namespace Com.Zombtoy.Weapon
                 Life = life,
                 State = 0,
             });
+            WeaponMod.NotifyProjectileSpawned(e.Id, kind); // 视图桥（CONTRACT.md §8：宿主 ProjectileView 实例化原 prefab）
         }
 
         /// <summary>调 enemy:damage（二进制 ModCall，Rule 14；sourceKind 区分，契约 §4/§0.7）。</summary>
@@ -278,6 +279,8 @@ namespace Com.Zombtoy.Weapon
                 p.Life -= ctx.DeltaTime;
                 if (p.Life <= 0f)
                 {
+                    // 超时自毁（未命中；原版 Destroy(gameObject, life)）：无爆炸，通知视图直接销毁
+                    WeaponMod.NotifyProjectileDestroyed(entityId, p.Kind, hitBurst: false);
                     ctx.World.Destroy(e);
                     _tickTimers.Remove(entityId);
                     continue;
@@ -310,6 +313,7 @@ namespace Com.Zombtoy.Weapon
             if (direct == 0) return;
 
             ExplodeRocket(direct, p.X, p.Z, p.OwnerId); // 直击 + 内圈/外圈 AOE 各调一次 enemy:damage（契约 §3 序 4）
+            WeaponMod.NotifyProjectileDestroyed(e.Id, p.Kind, hitBurst: true); // 命中→视图播原 prefab 爆炸组
             ctx.World.Destroy(e);
             _tickTimers.Remove(e.Id);
         }
@@ -367,6 +371,7 @@ namespace Com.Zombtoy.Weapon
                 // 命中：伤害（sourceKind=Ice）+ 缓速（enemy:apply_slow，契约 §3 序 4 / §7）
                 FireSystem.CallEnemyDamage(_context, target, (int)p.Damage, p.OwnerId, SourceKind.Ice);
                 CallEnemySlow(target, WeaponConfig.IceSlowMul, WeaponConfig.IceSlowDuration);
+                WeaponMod.NotifyProjectileDestroyed(e.Id, p.Kind, hitBurst: false); // 命中即销毁（无爆发，原版 Destroy(gameObject)）
                 ctx.World.Destroy(e);
             }
         }
@@ -417,6 +422,7 @@ namespace Com.Zombtoy.Weapon
                 Life = WeaponConfig.TornadoLifespan,
                 State = 0,
             });
+            WeaponMod.NotifyProjectileSpawned(e.Id, (byte)WeaponKind.Tornado); // 视图桥（CONTRACT.md §8）
         }
 
         // ---- 对端能力调用（enemy:get_all / enemy:apply_slow，二进制 ModCall，Rule 14） ----

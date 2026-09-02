@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using Game.ECS;
 using Game.Mod.Contract;
 using Game.Mod.Contract.Wire;
@@ -41,6 +42,12 @@ namespace Com.Zombtoy.Weapon
         // 静态桥（视图访问 / 测试，Mod 内部状态，FPS 先例）
         public static World World { get; private set; } = null!;
         public static IModContext Context { get; private set; } = null!;
+
+        /// <summary>投射物视图静态桥（CONTRACT.md §8，M2）：宿主 ProjectileView 订阅实例化**原投射物 prefab**
+        /// （同 enemy Mod OnProjectileSpawned 先例）。事件在系统内触发（生成/命中/超时），无任何线格式
+        /// 参与（进程内静态事件，Rule 11 消息仅限跨 Mod；本桥供本 Mod 视图消费）。</summary>
+        public static event Action<uint, byte>? OnProjectileSpawned;      // (投射物实体, Projectile.Kind)
+        public static event Action<uint, byte, bool>? OnProjectileDestroyed; // (投射物实体, Kind, 是否命中爆发：Rocket 命中→爆炸表现)
 
         /// <summary>武器域实体（WeaponActive/WeaponOwner/ShotRequest/SwitchRequest/TornadoRequest 所在，常驻）。</summary>
         public static uint ActiveEntityId { get; private set; }
@@ -115,6 +122,8 @@ namespace Com.Zombtoy.Weapon
         {
             // 对称撤销（Rule 20）：系统/实体/能力/订阅由 Core 按 ModObject 归属强制回收（§9.2/§13.5），
             // 本 Mod 只清静态桥与本地状态。
+            OnProjectileSpawned = null;
+            OnProjectileDestroyed = null;
             for (var i = 0; i < SlotEntityIds.Length; i++) SlotEntityIds[i] = 0;
             _projectileSystem = null;
             World = null!;
@@ -175,6 +184,18 @@ namespace Com.Zombtoy.Weapon
                 active.CurrentIndex = 0;
                 World.Add(domain, active);
             }
+
+            // 清场遗留投射物（对齐 enemy:reset 先例：重置销毁飞行中实体并通知视图销毁视觉；
+            // 原版死亡后场景重载等价于清空场上投射物）
+            var stale = new List<uint>();
+            foreach (var (id, p) in World.Store<Projectile>().All()) stale.Add(id);
+            foreach (var id in stale)
+            {
+                var e = new Entity(id);
+                if (World.TryGet<Projectile>(e, out var p))
+                    NotifyProjectileDestroyed(id, p.Kind, hitBurst: false);
+                World.Destroy(e);
+            }
             _projectileSystem?.ResetSession();
             PublishWeaponSwitched(0);
             return new object?[] { true };
@@ -212,6 +233,12 @@ namespace Com.Zombtoy.Weapon
         }
 
         // ---- 内部 ----
+
+        /// <summary>视图静态桥通知（事件只能在声明类内调用，C# 事件语义）：宿主 ProjectileView 表现。
+        /// hitBurst = Rocket 命中爆炸（播放原 prefab 爆炸组）；超时/其他命中 = false（无爆炸）。</summary>
+        internal static void NotifyProjectileSpawned(uint id, byte kind) => OnProjectileSpawned?.Invoke(id, kind);
+        internal static void NotifyProjectileDestroyed(uint id, byte kind, bool hitBurst)
+            => OnProjectileDestroyed?.Invoke(id, kind, hitBurst);
 
         /// <summary>Register 时取一次玩家实体（契约 §7）。</summary>
         private static uint FetchPlayerEntity()

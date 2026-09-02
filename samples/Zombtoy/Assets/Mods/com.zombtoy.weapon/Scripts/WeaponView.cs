@@ -153,6 +153,11 @@ namespace Com.Zombtoy.Weapon
 
             if (PlayerDead()) return; // 玩家死亡不开火/不切枪（对齐原版 Inventory/PlayerShooting）
 
+            // 批处理截图/冒烟（无人按键）：自动演示三类投射物（火箭筒/冰手枪/龙卷风），供 QA 截图窗口内
+            // 真实生成——日志确认加载原 Rocket/IceBullet/Tornado prefab + 画面可见；真实游玩不受影响
+            // （对齐 MenuView 批处理自动开局先例）。
+            if (Application.isBatchMode) BatchDemoDrive();
+
             // 1-4 键切换（契约 §8）
             for (var i = 0; i < WeaponConfig.SlotCount; i++)
             {
@@ -185,7 +190,11 @@ namespace Com.Zombtoy.Weapon
 
         // ---- 输入落地（静态桥，契约 §8） ----
 
-        private void Fire()
+        private void Fire() => Fire(null, 0u);
+
+        /// <summary>开火（aimed 为空 = 真人/编辑器相机射线瞄准；批处理演示 aim = 最近存活敌人落点，
+        /// hitEnemy = 该敌人实体（射线武器直伤用；火箭/冰弹不依赖，系统自行追踪/命中判定））。</summary>
+        private void Fire(Vector3? aimed, uint hitEnemy)
         {
             var current = CurrentSlot();
             if (current >= WeaponConfig.SlotCount) return;
@@ -193,19 +202,37 @@ namespace Com.Zombtoy.Weapon
 
             var origin = MuzzleOrigin();
             var dir = _camera is not null ? _camera.transform.forward : transform.forward;
+            if (aimed.HasValue)
+            {
+                dir = aimed.Value - origin;
+                if (dir.sqrMagnitude < 0.0001f)
+                    dir = _camera is not null ? _camera.transform.forward : transform.forward;
+                else dir.Normalize();
+            }
 
             uint hitEntity = 0;
             var hitPoint = origin + dir * def.Range;
             var isHit = false;
-            if (Physics.Raycast(origin, dir, out var hit, def.Range, _shootableMask))
+            if (!aimed.HasValue)
             {
-                hitPoint = hit.point;
-                isHit = true;
-                // 跨 Mod 视图映射（Rule 12）：经框架 IEntityView 读目标实体 id，零类型引用/反射/全局发现
-                foreach (var mb in hit.collider.GetComponentsInParent<MonoBehaviour>())
+                // 真人路径：Physics.Raycast（Shootable 层，当前武器 Range）→ 命中 collider →
+                // 经 IEntityView 取 EnemyView.EntityId（未命中=0）
+                if (Physics.Raycast(origin, dir, out var hit, def.Range, _shootableMask))
                 {
-                    if (mb is IEntityView view) { hitEntity = view.EntityId; break; }
+                    hitPoint = hit.point;
+                    isHit = true;
+                    foreach (var mb in hit.collider.GetComponentsInParent<MonoBehaviour>())
+                    {
+                        if (mb is IEntityView view) { hitEntity = view.EntityId; break; }
+                    }
                 }
+            }
+            else
+            {
+                // 批处理演示路径：直接以目标敌人为命中点（HitEntityId 供射线武器直伤）
+                hitPoint = aimed.Value;
+                isHit = hitEnemy != 0;
+                hitEntity = hitEnemy;
             }
 
             // 视图写射击请求（含命中点；ShooterId 由 FireSystem 回填 WeaponOwner）
@@ -268,6 +295,93 @@ namespace Com.Zombtoy.Weapon
                 DirX = dir.x,
                 DirZ = dir.z,
             });
+        }
+
+        // ---- 批处理截图/冒烟自动发射驱动（仅 Application.isBatchMode） ----
+        private float _batchElapsed;
+        private bool _batchTornadoDone, _batchRocketDone, _batchCryoDone, _batchBackDone;
+
+        /// <summary>
+        /// 批处理（截图验收，无人按键）自动演示三类投射物，对齐 MenuView 批处理自动开局先例：
+        /// 按**游戏时间**排程（截图窗口 10s：开局 3s 首批刷敌后）——
+        /// 3.2s 副手龙卷风（Fire2，一次性）→ 3.8s 切火箭筒（槽 2）3.9~4.7s 按住发射（1s 冷却→1 发）→
+        /// 5.2s 切冰手枪（槽 3）5.3~6.4s 按住发射（0.4s 冷却→2~3 发）→ 7s 复位机关枪（槽 0）。
+        /// 瞄准取最近存活敌人（enemy:get_all，二进制 ModCall Rule 14，形状见 enemy CONTRACT §4）；
+        /// 无敌人时相机前方发射。所有开火走真实 ShotRequest/TornadoRequest → 系统权威逻辑（契约 §3），
+        /// 真实游玩（非批处理）不受影响。
+        /// </summary>
+        private void BatchDemoDrive()
+        {
+            if (_batchBackDone) return;
+            _batchElapsed += Time.deltaTime;
+            var t = _batchElapsed;
+
+            if (!_batchTornadoDone && t >= 3.2f)
+            {
+                _batchTornadoDone = true;
+                WriteTornado(); // Fire2 → TornadoRequest → ProjectileSystem 生成 Tornado（M2）
+            }
+
+            if (!_batchRocketDone && t >= 3.8f)
+            {
+                _batchRocketDone = true;
+                WriteSwitch(2); // 火箭筒（槽 2）
+            }
+            if (_batchRocketDone && !_batchCryoDone && t >= 3.9f && t <= 4.7f)
+            {
+                var aim = BatchAimTarget();
+                if (aim.HasValue) Fire(aim.Value.Point, aim.Value.Id);
+                else Fire(); // 无敌人：相机前向发射（火箭超时自毁，逻辑照常）
+            }
+
+            if (!_batchCryoDone && t >= 5.2f)
+            {
+                _batchCryoDone = true;
+                WriteSwitch(3); // 冰手枪（槽 3）
+            }
+            if (_batchCryoDone && !_batchBackDone && t >= 5.3f && t <= 6.4f)
+            {
+                var aim = BatchAimTarget();
+                if (aim.HasValue) Fire(aim.Value.Point, aim.Value.Id);
+                else Fire();
+            }
+
+            if (!_batchBackDone && t >= 7.0f)
+            {
+                _batchBackDone = true;
+                WriteSwitch(0); // 演示结束复位机关枪（契约 §8 槽位）
+            }
+        }
+
+        /// <summary>最近存活敌人瞄准点（enemy:get_all 行解析，Rule 19 各自重复定义；失败返回 null）。</summary>
+        private (Vector3 Point, uint Id)? BatchAimTarget()
+        {
+            var ctx = WeaponMod.Context;
+            if (ctx is null) return null;
+            try
+            {
+                var buf = ctx.Mods.Call(WeaponMod.EnemyModId, WeaponMod.EnemyGetAllCap,
+                    Game.Mod.Contract.Wire.DataCodec.Write(null));
+                var rows = Game.Mod.Contract.Wire.DataCodec.Read(new Game.Mod.Contract.Wire.PayloadReader(buf));
+                var origin = MuzzleOrigin();
+                Vector3 best = default;
+                var bestId = 0u;
+                var bestD = float.MaxValue;
+                foreach (var row in rows)
+                {
+                    if (!CapabilityShapes.TryReadGetAllRow(row, out var id, out var x, out var y, out var z,
+                            out _, out var alive, out _, out _)) continue;
+                    if (!alive) continue;
+                    var d = (new Vector3(x, y, z) - origin).sqrMagnitude;
+                    if (d < bestD && d < 70f * 70f) { bestD = d; best = new Vector3(x, y, z); bestId = id; }
+                }
+                if (bestId == 0u) return null;
+                return (best, bestId);
+            }
+            catch (System.Exception)
+            {
+                return null; // enemy 未加载（卸载竞态）：本次无目标 → 相机前向发射
+            }
         }
 
         // ---- 表现辅助 ----

@@ -25,7 +25,7 @@
     <Compile Include="../../samples/MirrorUnityFPS/Assets/Mods/com.fps.player/Scripts/**/*.cs" Exclude="../../samples/MirrorUnityFPS/Assets/Mods/com.fps.player/Scripts/PlayerView.cs" />
     <Compile Include="../../samples/Zombtoy/Assets/Mods/com.zombtoy.enemy/Scripts/**/*.cs" Exclude="../../samples/Zombtoy/Assets/Mods/com.zombtoy.enemy/Scripts/EnemyView.cs;../../samples/Zombtoy/Assets/Mods/com.zombtoy.enemy/Scripts/EnemyProjectileView.cs;../../samples/Zombtoy/Assets/Mods/com.zombtoy.enemy/Scripts/EnemyBossView.cs" />
     <Compile Include="../../samples/Zombtoy/Assets/Mods/com.zombtoy.player/Scripts/**/*.cs" Exclude="../../samples/Zombtoy/Assets/Mods/com.zombtoy.player/Scripts/PlayerView.cs" />
-    <Compile Include="../../samples/Zombtoy/Assets/Mods/com.zombtoy.weapon/Scripts/**/*.cs" Exclude="../../samples/Zombtoy/Assets/Mods/com.zombtoy.weapon/Scripts/WeaponView.cs" />
+    <Compile Include="../../samples/Zombtoy/Assets/Mods/com.zombtoy.weapon/Scripts/**/*.cs" Exclude="../../samples/Zombtoy/Assets/Mods/com.zombtoy.weapon/Scripts/WeaponView.cs;../../samples/Zombtoy/Assets/Mods/com.zombtoy.weapon/Scripts/ProjectileView.cs" />
     <Compile Include="../../samples/Zombtoy/Assets/Mods/com.zombtoy.item/Scripts/**/*.cs" Exclude="../../samples/Zombtoy/Assets/Mods/com.zombtoy.item/Scripts/ItemView.cs" />
     <Compile Include="../../samples/Zombtoy/Assets/Mods/com.zombtoy.leaderboard/Scripts/**/*.cs" />
     <Compile Include="../../samples/Zombtoy/Assets/Mods/com.zombtoy.score/Scripts/**/*.cs" />
