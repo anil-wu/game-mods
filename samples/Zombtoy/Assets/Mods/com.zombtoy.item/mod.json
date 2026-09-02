@@ -1,6 +1,6 @@
 {
   "id": "com.zombtoy.item",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "entry": "Com.Zombtoy.Item.ItemMod",
   "modules": {
     "shared": "com.zombtoy.item.dll"

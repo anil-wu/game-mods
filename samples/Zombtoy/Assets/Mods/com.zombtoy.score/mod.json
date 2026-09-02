@@ -1,6 +1,6 @@
 {
   "id": "com.zombtoy.score",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "entry": "Com.Zombtoy.Score.ScoreMod",
   "modules": {
     "shared": "com.zombtoy.score.dll"
