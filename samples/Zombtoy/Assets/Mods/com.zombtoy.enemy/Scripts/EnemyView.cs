@@ -213,6 +213,17 @@ namespace Com.Zombtoy.Enemy
         }
 
         /// <summary>
+        /// AnimationEvent 接收器（原版 EnemyHealth.StartSinking 被 enemyAC 'Death' 动画事件调用）：
+        /// 触发下沉；与 StartDeath 幂等（死亡表现只触发一次）。EnemyView 挂在原敌人 prefab 实例上（与 Animator 同 GameObject），
+        /// 故此公开方法能作为 'StartSinking' 动画事件的接收器，消除 “has no receiver” 警告。
+        /// </summary>
+        public void StartSinking()
+        {
+            if (_dying) { _sinking = true; return; }
+            StartDeath();
+        }
+
+        /// <summary>
         /// 材质/贴图防御（复刻宪法允许的原版资源缺失回退，日志声明）：prefab 自带模型材质完好（sharedMaterial
         /// 非空且 mainTexture 非空）时**不干预**；断链/丢贴图时经 context.Resources.Load 按 EnemyKind 取
         /// 本 Mod 自带材质（AssetId 带扩展名精确命中，Rule 3）整条补链。渲染体对象名含类型名（Zombunny/Zombear/
