@@ -39,6 +39,10 @@ namespace Game.Mod.Runtime
         private readonly Dictionary<ModId, ModObject> _loaded = new();
         private readonly List<ModId> _loadOrder = new(); // 真实加载顺序（依赖在前），UnloadAll 取其镜像
         private readonly Dictionary<CapabilityId, (ModId Owner, CapabilityHandler Handler)> _capabilities = new();
+        /// <summary>适用依赖缓存（§4 第 8 项同类）：Mod 加载成功后按环境预计算 <see cref="ModResolver.ApplicableDependencies"/> 的
+        /// ModId 集合，Call 依赖校验由 O(deps) 线性扫降为 O(1) HashSet.Contains（§12.11 规则 1）。
+        /// 与 _loaded 同生命周期：加载即建、卸载即清。</summary>
+        private readonly Dictionary<ModId, HashSet<ModId>> _applicableDeps = new();
         private readonly List<ModCallTraceEntry> _callTrace = new(256);
         private int _callTraceHead;
         private int _callTraceCount;
@@ -317,6 +321,7 @@ namespace Game.Mod.Runtime
 
             mod.State = ModObjectState.Unloaded;
             _loaded.Remove(modId);
+            _applicableDeps.Remove(modId); // 依赖缓存随 ModObject 一并清除（§4 第 8 项：避免残留指向已卸载 Mod 的引用）
             _loadOrder.Remove(modId);
             ModUnloaded?.Invoke(modId);
             _log.Info(
@@ -370,12 +375,10 @@ namespace Game.Mod.Runtime
             // 规则 1：必须先声明依赖——未声明依赖的 Call 直接被 Core 拒绝（§12.11）
             if (caller != target)
             {
-                if (!_loaded.TryGetValue(caller, out var callerMod))
+                if (!_loaded.TryGetValue(caller, out _))
                     throw new NoModException(caller);
-                var declared = ModResolver
-                    .ApplicableDependencies(callerMod.Info.Manifest, HasClient, HasServer)
-                    .Any(d => d.Id == target);
-                if (!declared)
+                // O(1) 判定：适用依赖集合已按环境在加载完成点预计算（§4 第 8 项），避免每 Call 线性扫依赖闭包
+                if (!_applicableDeps.TryGetValue(caller, out var applicable) || !applicable.Contains(target))
                     throw new ModDependencyException(
                         $"Mod '{caller}' 未在 Manifest 声明对 '{target}' 的依赖，能力调用被拒绝（§12.11 规则 1）");
             }
@@ -468,6 +471,11 @@ namespace Game.Mod.Runtime
                 AssemblyLoadHandle = loadResult,
             };
             _loaded[manifest.ModId] = mod;
+
+            // 预计算适用依赖集合（§4 第 8 项）：按本环境 Scope 过滤（§12.6，与 ApplicableDependencies 同逻辑）。
+            // 必须在 Register 之前就位——Register 期（含测试路径）可能立刻发起 ModCall。
+            _applicableDeps[manifest.ModId] = new HashSet<ModId>(
+                ModResolver.ApplicableDependencies(manifest, HasClient, HasServer).Select(d => d.Id));
 
             // IMod.Register：向 Game Runtime 声明并注册自己提供的能力（§3）
             instance.Register(context);

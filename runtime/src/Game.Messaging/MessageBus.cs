@@ -156,10 +156,12 @@ namespace Game.Messaging
             _dispatching++;
             try
             {
-                // 快照派发：订阅者共享同一份只读视图，零拷贝（§14.12.1）
-                var snapshot = list.ToArray();
+                // 订阅者共享同一份只读视图，零拷贝（§14.12.1）。
+                // 派发期 Subscribe/UnsubscribeAll 一律进 _pendingMutations 延迟队列（§13.6 规则 3），
+                // 派发期间活订阅列表不会被直接修改——直接 foreach 活列表与快照等价，
+                // 省去每 Publish 一次的 list.ToArray() 快照分配（§4 第 8 项）。
                 var reader = new PayloadReader(payload);
-                foreach (var sub in snapshot)
+                foreach (var sub in list)
                 {
                     if (sub.ConsecutiveErrors > Quotas.MaxErrorsBeforeCircuitBreak)
                         continue; // 已熔断
